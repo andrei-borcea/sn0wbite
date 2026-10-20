@@ -65,6 +65,8 @@ the device can become usable.
 For each finding, record the device and firmware versions, tools, steps, and
 supporting evidence. Separate confirmed observations from hypotheses. For boot
 attempts, include diagnostic output and the last confirmed execution stage.
+Include firmware SHA-256 hashes and the source revision of any payload or loader
+used in the attempt.
 
 ## Disclaimer
 
