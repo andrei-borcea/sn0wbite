@@ -1,0 +1,5 @@
+# Device acquisitions can contain personal data and device-specific secrets.
+/backups/
+
+# macOS filesystem metadata.
+.DS_Store
