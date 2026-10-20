@@ -1,0 +1,89 @@
+{
+  "collection_date": "2026-10-20",
+  "publication_scope": "Selected historical evidence. Export performed offline; no device actions or network requests.",
+  "private_source_paths": "Relative to the original private inspection directory. Originals remain excluded by /backups/ in .gitignore.",
+  "sources": {
+    "inspection.json": {
+      "sha256": "d9434963fe23a98f783728a4b0c4831fa24108f0dbe7065b318e507ab326c5df",
+      "bytes": 11240
+    },
+    "rea-device-identity.json": {
+      "sha256": "5529c2fb4f3e44c60749227e40587bc56fedaa87864731f205e3708f41dd1e27",
+      "bytes": 2270
+    },
+    "backup-assessment.json": {
+      "sha256": "4c5ec589bab2991e6a3f71b5c545814849e02e60ecb4c74c1160140db8a68446",
+      "bytes": 6710
+    },
+    "init_boot/bootloader-partition-sizes.json": {
+      "sha256": "a84116ff7feb0a3876090c0e0651ba91d1b8ec39fc6bdcdaac6e908d4b25757f",
+      "bytes": 5654
+    },
+    "init_boot/bootloader-getvar-all.txt": {
+      "sha256": "aa50648adb8e43f512ad5a7a445c284febd6fe5d82909f8b55345a0799f2772f",
+      "bytes": 6094
+    },
+    "adb-root-result.txt": {
+      "sha256": "627734adb4c6a61e5ccba83bacea0cf9c9c144def3ac1ce85718c37b8808dcfe",
+      "bytes": 45
+    },
+    "init_boot/direct-read-probe.txt": {
+      "sha256": "c1c7465637b9544db4ab211badd15319a1d42daf5bacc5b75b0be0181ccd3898",
+      "bytes": 629
+    },
+    "raw-access-probe.txt": {
+      "sha256": "d02561df63b69cc5aac4bee4ea33027a4e5cc790ae1d83085f3957b8970d2305",
+      "bytes": 32955
+    },
+    "init_boot/actual-max-fetch-size.stderr": {
+      "sha256": "70dcf64cee8687afd153d0bc2d45cb560da6baa4e866c328957bc8a64bbd53e8",
+      "bytes": 125
+    },
+    "init_boot/actual-fetch-init-boot.stderr": {
+      "sha256": "67e0de74281fa6f8bee34c7bdfeaef322d653fb6d885400860fcdc7da26a3abd",
+      "bytes": 86
+    },
+    "init_boot/bugreport-recovery/FS__cache__recovery__last_log": {
+      "sha256": "6350213b88c4ec74f68a0d410d399517f7631d6eca340fa9a0edf7dda7402746",
+      "bytes": 1166290
+    },
+    "init_boot/ota-recheck/findings.json": {
+      "sha256": "85ce2f5b87f16b1e2bdd7e1bfa6f61581a7a5dee4bd7a2706ce9889f1dae2bed",
+      "bytes": 2589
+    },
+    "init_boot/phone-path/assessment.json": {
+      "sha256": "bcba9dc31da66d64f597eaf048af8ef80adf3f1e3abb97860d3f3f7328ec521a",
+      "bytes": 4236
+    },
+    "init_boot/phone-path/phone/ohealth/findings.json": {
+      "sha256": "cb267e7fe299005a68ab51d3535517af6cf5d296fde4c01a8156ee34538dbaed",
+      "bytes": 13664
+    },
+    "init_boot/phone-path/gms/findings.json": {
+      "sha256": "479534c518d9dbeaa1c93f56f3d01a84c25fcba52584163dced5b961bcd80095",
+      "bytes": 7432
+    },
+    "init_boot/phone-path/phone/logs/dog3-codec/dog3-codec-findings.json": {
+      "sha256": "73987ed06482e15c2c9a23de0219d6623452e463a8bf07818db4d9fccab8fb81",
+      "bytes": 7876
+    },
+    "watchos-artifact.json": {
+      "sha256": "5ee46be2768d363fffae5406dee20c04647aa474f4fd40d06ce1ecf828f90329",
+      "bytes": 884
+    }
+  },
+  "transformations": {
+    "device.json": "Explicit allowlist of build, tooling and access fields; identifiers and host paths omitted.",
+    "partitions.csv": "Joined ADB by-name mappings with fastboot sizes and types by exact partition name; no GPT sectors, offsets or partition bytes inferred.",
+    "adb-excerpts.txt": "Selected literal output with original source line numbers; no full raw probe export.",
+    "fastboot-excerpts.txt": "Allowlisted bootloader keys and partition metadata; serial redacted; failed readback output retained.",
+    "recovery-update-excerpts.txt": "Selected literal update lines with original source line numbers; unrelated properties/messages excluded.",
+    "ota-and-ohealth.json": "Selected status fields, technical static findings and aggregate counts; raw phone messages/times/identifiers/keys omitted.",
+    "watchos-reference.json": "Package identity and hash fields only; absolute source paths and binary archive excluded."
+  },
+  "limitations": [
+    "Source hashes identify private source files; those files are not distributed.",
+    "Public SHA256SUMS covers the exported evidence only and does not validate a firmware image or a full device backup.",
+    "The initial inspection and later fastboot/OTA probes occurred at different stages. Earlier no-reboot notes are not a whole-session claim."
+  ]
+}

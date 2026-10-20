@@ -1,4 +1,5 @@
-# Device acquisitions can contain personal data and device-specific secrets.
+# Private acquisitions can contain personal data and device-specific secrets.
+# Publish only reviewed exports under research/.
 /backups/
 
 # macOS filesystem metadata.

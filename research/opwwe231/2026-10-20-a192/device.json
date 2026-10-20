@@ -1,0 +1,42 @@
+{
+  "collection_date": "2026-10-20",
+  "target": "OnePlus Watch 2 / OPWWE231",
+  "adb_version": "36.0.0-13206524",
+  "properties": {
+    "ro.product.brand": "OnePlus",
+    "ro.product.manufacturer": "OnePlus",
+    "ro.product.model": "OPWWE231",
+    "ro.product.device": "OPWWE231",
+    "ro.build.version.release": "14",
+    "ro.build.version.sdk": "34",
+    "ro.build.version.security_patch": "2026-08-01",
+    "ro.build.id": "AW2A.240903.001.A3.OPWWE231_11_A.192.260910",
+    "ro.build.fingerprint": "OnePlus/OPWWE231/OPWWE231:14/AW2A.240903.001.A3.OPWWE231_11_A.192.260910/01:user/release-keys",
+    "ro.build.characteristics": "nosdcard,watch",
+    "ro.product.cpu.abilist": "armeabi-v7a,armeabi",
+    "ro.debuggable": "0"
+  },
+  "kernel_release": "5.15.185-android14-11-maybe-dirty",
+  "soc": {
+    "model": "monaco",
+    "manufacturer": "QTI"
+  },
+  "access": {
+    "adb_uid": "2000(shell)",
+    "bootloader_state": "locked",
+    "ro_boot_flash_locked": "1",
+    "ro_debuggable": "0",
+    "ro_secure": "1",
+    "selinux": "Enforcing",
+    "su_found_by_command_v": false
+  },
+  "verified_boot_state": "green",
+  "raw_storage_image_bytes_acquired": 0,
+  "complete_dump_created": false,
+  "restoration_validated": false,
+  "limitations": [
+    "Selected build and access observations, not a full getprop or bugreport export.",
+    "Model and build identify a firmware family; no device serial, Android ID or account data is included.",
+    "Properties describe the inspected A192 device; they do not establish other firmware behavior."
+  ]
+}

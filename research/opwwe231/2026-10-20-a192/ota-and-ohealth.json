@@ -1,0 +1,69 @@
+{
+  "collection_date": "2026-10-20",
+  "installed_update": {
+    "source": "A.190.260521",
+    "target": "A.192.260910",
+    "path_used": "/cache/update.zip",
+    "init_boot_was_patched": true
+  },
+  "native_forced_check": {
+    "broadcast_completed": true,
+    "server_check_succeeded": true,
+    "gservices_url_before_check": null,
+    "gservices_url_after_check": null,
+    "current_build_unchanged": true,
+    "temporary_diagnostic_app_uninstalled": true
+  },
+  "phone_application": {
+    "package": "com.heytap.health.international",
+    "version_name": "4.62.7_9b9749e_260920",
+    "version_code": "46207"
+  },
+  "static_findings": {
+    "evidence_type": "Focused static analysis, combined with separately recorded UI and access observations.",
+    "gms_download_ownership": "In the traced GMS path, the watch owns OTA status, HTTP download and output file. The paired phone can supply Bluetooth IP connectivity and companion-app compatibility information. No phone-directed OTA URL/package transfer or reinstall-current-build command was found on these traced paths. This does not rule out a separate OEM OHealth implementation, which is outside this GMS scope.",
+    "explicit_page_flags": {
+      "autoDownload": false,
+      "needSchedulerAuto": true,
+      "forceRefresh": true
+    },
+    "background_flags": {
+      "autoDownload": true,
+      "needSchedulerAuto": true,
+      "forceRefresh": false
+    },
+    "normal_ota_entry_type": 40,
+    "more_entry_type": 41,
+    "wear_os_entry_gate": "The normal type40 OTA entry is excluded for Wear OS outside a special model branch; the actual UI had no type40 entry.",
+    "private_cache_pattern": "/data/user/0/com.heytap.health.international/files/device_ota/<MD5(URL)>.bin",
+    "private_cache_contents": "Unknown: direct reads denied, run-as rejected non-debuggable app, no usable su.",
+    "forced_current_build_redownload_established": false,
+    "supported_ota_deeplink_established": false,
+    "apk_execution_during_static_analysis": false
+  },
+  "historical_phone_logs": {
+    "scope": "Selected closed main/transport logs from 2026-10-19; no health or activity payloads published.",
+    "input_files": 48,
+    "input_encrypted_bytes": 2411392,
+    "frames": 580,
+    "complete_gzip_frames_crc_validated": 572,
+    "partial_gzip_frames": 8,
+    "valid_json_records": 102758,
+    "retained_ota_records": 39,
+    "firmware_urls_found": [],
+    "no_new_version_responses": 4,
+    "separation": "Observed OHealth proprietary cloud-check responses do not establish the WearOS/GMS system OTA A190->A192 download path. No conclusion that the watch update did not occur follows from these phone no-new-version responses."
+  },
+  "outcome": {
+    "a192_download_started": false,
+    "a192_url_recovered": false,
+    "current_init_boot_obtained": false,
+    "complete_device_dump_acquired": false
+  },
+  "limitations": [
+    "A successful catalog check does not force an offer of the installed build.",
+    "Denied cache access cannot establish absence or deletion of an update package.",
+    "Static code establishes available branches, not execution of a hidden page.",
+    "No user/account identifiers, device addresses, private URLs, health messages or decoder keys are included."
+  ]
+}

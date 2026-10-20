@@ -1,0 +1,24 @@
+{
+  "archive_bytes": 1520729503,
+  "archive_sha256": "56f2e12ad0eb9ff45858786d151d9eda9667f9c2fab26d8af961b1cbafb24f84",
+  "os_version": "6.3.1",
+  "build": "17U224",
+  "supported_devices": [
+    "Watch5,4"
+  ],
+  "hardware_model": "N146bAP",
+  "package_type": "com.apple.MobileAsset.SoftwareUpdate",
+  "restore_behavior": "Update",
+  "variant": "Customer Software Update",
+  "limitations": [
+    "OTA update package, not a complete restore IPSW.",
+    "Whether the payload is self-contained has not been established.",
+    "Apple signatures and all ZIP CRCs have not been verified."
+  ],
+  "evidence_members": [
+    "Info.plist",
+    "AssetData/Info.plist",
+    "AssetData/boot/BuildManifest.plist"
+  ],
+  "firmware_redistributed": false
+}

@@ -1,0 +1,27 @@
+# Selected historical ADB output; this file is not a complete shell transcript.
+# Source line numbers refer to private originals. Device selectors are omitted.
+
+## adb root (historical request; production build rejected it)
+# Source: adb-root-result.txt
+L1: adbd cannot run as root in production builds
+
+## init_boot link, permissions and failed read
+# Source: init_boot/direct-read-probe.txt
+L1: lrwxrwxrwx 1 root root       21 1970-06-14 04:31 /dev/block/by-name/init_boot -> /dev/block/mmcblk0p58
+L2: brw------- 1 root root 259,  50 1970-06-14 04:31 /dev/block/mmcblk0p58
+L3: dd: /dev/block/by-name/init_boot: Permission denied
+L4: 0+0 records in
+L5: 0+0 records out
+L6: 0 bytes (0 B) copied, 0.001 s, 0 B/s
+L7: ls: /cache/recovery: Permission denied
+L8: ls: /cache/ota: Permission denied
+L9: ls: /data/ota: Permission denied
+L10: ls: /data/ota_package: Permission denied
+L11: ls: /data/misc/update_engine_log: Permission denied
+L12: ls: /metadata/ota: Permission denied
+
+## Other raw read denials
+# Source: raw-access-probe.txt
+L501: dd: /dev/block/mmcblk0: Permission denied
+L509: dd: /dev/block/by-name/super: Permission denied
+L513: dd: /dev/block/by-name/userdata: Permission denied

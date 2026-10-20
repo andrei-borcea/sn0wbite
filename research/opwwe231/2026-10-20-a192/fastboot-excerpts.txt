@@ -1,0 +1,152 @@
+# Selected historical fastboot output. No new reboot or fastboot query performed for publication.
+# Source: init_boot/bootloader-getvar-all.txt
+# Serial replaced; battery/charger fields and unrelated output omitted.
+L1: (bootloader) snapshot-update-status:none
+L3: (bootloader) hw-revision:10000
+L4: (bootloader) unlocked:no
+L11: (bootloader) erase-block-size: 0x200
+L12: (bootloader) logical-block-size: 0x200
+L13: (bootloader) variant:SWP EMMC
+L14: (bootloader) partition-type:userdata:f2fs
+L15: (bootloader) partition-size:userdata: 0x597FDBE00
+L16: (bootloader) partition-type:fsc:raw
+L17: (bootloader) partition-size:fsc: 0x20000
+L18: (bootloader) partition-type:fsg:raw
+L19: (bootloader) partition-size:fsg: 0x200000
+L20: (bootloader) partition-type:modemst2:raw
+L21: (bootloader) partition-size:modemst2: 0x200000
+L22: (bootloader) partition-type:modemst1:raw
+L23: (bootloader) partition-size:modemst1: 0x200000
+L24: (bootloader) partition-type:init_boot:raw
+L25: (bootloader) partition-size:init_boot: 0x800000
+L26: (bootloader) partition-type:vendor_boot:raw
+L27: (bootloader) partition-size:vendor_boot: 0x6000000
+L28: (bootloader) partition-type:sensorstore:raw
+L29: (bootloader) partition-size:sensorstore: 0x500000
+L30: (bootloader) partition-type:uefivarstore:raw
+L31: (bootloader) partition-size:uefivarstore: 0x80000
+L32: (bootloader) partition-type:catecontentfv:raw
+L33: (bootloader) partition-size:catecontentfv: 0x100000
+L34: (bootloader) partition-type:catefv:raw
+L35: (bootloader) partition-size:catefv: 0x80000
+L36: (bootloader) partition-type:mdcompress:raw
+L37: (bootloader) partition-size:mdcompress: 0x1400000
+L38: (bootloader) partition-type:multiimgqti:raw
+L39: (bootloader) partition-size:multiimgqti: 0x8000
+L40: (bootloader) partition-type:multiimgoem:raw
+L41: (bootloader) partition-size:multiimgoem: 0x8000
+L42: (bootloader) partition-type:storsec:raw
+L43: (bootloader) partition-size:storsec: 0x20000
+L44: (bootloader) partition-type:vbmeta:raw
+L45: (bootloader) partition-size:vbmeta: 0x10000
+L46: (bootloader) partition-type:logdump:raw
+L47: (bootloader) partition-size:logdump: 0x4000000
+L48: (bootloader) partition-type:cateloader:raw
+L49: (bootloader) partition-size:cateloader: 0x200000
+L50: (bootloader) partition-type:logfs:raw
+L51: (bootloader) partition-size:logfs: 0x200000
+L52: (bootloader) partition-type:toolsfv:raw
+L53: (bootloader) partition-size:toolsfv: 0x100000
+L54: (bootloader) partition-type:limits:raw
+L55: (bootloader) partition-size:limits: 0x1000
+L56: (bootloader) partition-type:splash:raw
+L57: (bootloader) partition-size:splash: 0x20A4000
+L58: (bootloader) partition-type:spunvm:raw
+L59: (bootloader) partition-size:spunvm: 0x800000
+L60: (bootloader) partition-type:apdp:raw
+L61: (bootloader) partition-size:apdp: 0x40000
+L62: (bootloader) partition-type:dip:raw
+L63: (bootloader) partition-size:dip: 0x100000
+L64: (bootloader) partition-type:devinfo:raw
+L65: (bootloader) partition-size:devinfo: 0x1000
+L66: (bootloader) partition-type:secdata:raw
+L67: (bootloader) partition-size:secdata: 0x6400
+L68: (bootloader) partition-type:rawdump:raw
+L69: (bootloader) partition-size:rawdump: 0x8000000
+L70: (bootloader) partition-type:frp:raw
+L71: (bootloader) partition-size:frp: 0x80000
+L72: (bootloader) partition-type:qupfw:raw
+L73: (bootloader) partition-size:qupfw: 0x10000
+L74: (bootloader) partition-type:featenabler:raw
+L75: (bootloader) partition-size:featenabler: 0x20000
+L76: (bootloader) partition-type:devcfg:raw
+L77: (bootloader) partition-size:devcfg: 0x20000
+L78: (bootloader) partition-type:keystore:raw
+L79: (bootloader) partition-size:keystore: 0x80000
+L80: (bootloader) partition-type:misc:raw
+L81: (bootloader) partition-size:misc: 0x100000
+L82: (bootloader) partition-type:metadata:raw
+L83: (bootloader) partition-size:metadata: 0x4000000
+L84: (bootloader) partition-type:uefisecapp:raw
+L85: (bootloader) partition-size:uefisecapp: 0x200000
+L86: (bootloader) partition-type:imagefv:raw
+L87: (bootloader) partition-size:imagefv: 0x200000
+L88: (bootloader) partition-type:dtbo:raw
+L89: (bootloader) partition-size:dtbo: 0xA00000
+L90: (bootloader) partition-type:ssd:raw
+L91: (bootloader) partition-size:ssd: 0x2000
+L92: (bootloader) partition-type:bluetooth:raw
+L93: (bootloader) partition-size:bluetooth: 0x100000
+L94: (bootloader) partition-type:ddr:raw
+L95: (bootloader) partition-size:ddr: 0x100000
+L96: (bootloader) partition-type:abl:raw
+L97: (bootloader) partition-size:abl: 0x100000
+L98: (bootloader) partition-type:dsp:raw
+L99: (bootloader) partition-size:dsp: 0x4000000
+L100: (bootloader) partition-type:modem:raw
+L101: (bootloader) partition-size:modem: 0x8200000
+L102: (bootloader) partition-type:mdtp:raw
+L103: (bootloader) partition-size:mdtp: 0x2000000
+L104: (bootloader) partition-type:mdtpsecapp:raw
+L105: (bootloader) partition-size:mdtpsecapp: 0x400000
+L106: (bootloader) partition-type:keymaster:raw
+L107: (bootloader) partition-size:keymaster: 0x80000
+L108: (bootloader) partition-type:cache:ext4
+L109: (bootloader) partition-size:cache: 0x10000000
+L110: (bootloader) partition-type:recovery:raw
+L111: (bootloader) partition-size:recovery: 0x4400000
+L112: (bootloader) partition-type:vbmeta_system:raw
+L113: (bootloader) partition-size:vbmeta_system: 0x10000
+L114: (bootloader) partition-type:super:raw
+L115: (bootloader) partition-size:super: 0x140000000
+L116: (bootloader) partition-type:boot:raw
+L117: (bootloader) partition-size:boot: 0x6000000
+L118: (bootloader) partition-type:hyp:raw
+L119: (bootloader) partition-size:hyp: 0x80000
+L120: (bootloader) partition-type:rpm:raw
+L121: (bootloader) partition-size:rpm: 0x80000
+L122: (bootloader) partition-type:tz:raw
+L123: (bootloader) partition-size:tz: 0x400000
+L124: (bootloader) partition-type:xbl_config:raw
+L125: (bootloader) partition-size:xbl_config: 0x20000
+L126: (bootloader) partition-type:xbl:raw
+L127: (bootloader) partition-size:xbl: 0x380000
+L128: (bootloader) partition-type:persist:raw
+L129: (bootloader) partition-size:persist: 0x2000000
+L130: (bootloader) partition-type:oplusreserve3:raw
+L131: (bootloader) partition-size:oplusreserve3: 0x2000000
+L132: (bootloader) partition-type:oplusreserve2:raw
+L133: (bootloader) partition-size:oplusreserve2: 0x2000000
+L134: (bootloader) partition-type:oplusreserve1:raw
+L135: (bootloader) partition-size:oplusreserve1: 0x800000
+L136: (bootloader) partition-type:oplusstanvbk:raw
+L137: (bootloader) partition-size:oplusstanvbk: 0xA00000
+L138: (bootloader) partition-type:oplusdycnvbk:raw
+L139: (bootloader) partition-size:oplusdycnvbk: 0xA00000
+L140: (bootloader) secure:yes
+L141: (bootloader) serialno:[REDACTED_DEVICE_SERIAL]
+L142: (bootloader) product:monaco
+L143: (bootloader) is-userspace:no
+L144: (bootloader) max-download-size:402653184
+L145: (bootloader) kernel:uefi
+
+## getvar max-fetch-size
+# Source: init_boot/actual-max-fetch-size.stderr
+L1: getvar:max-fetch-size                              FAILED (remote: 'GetVar Variable Not found')
+L2: Finished. Total time: 0.004s
+
+## fetch init_boot
+# Source: init_boot/actual-fetch-init-boot.stderr
+L1: fastboot: error: Unable to get max-fetch-size. Device does not support fetch command.
+
+# Resulting partial file length: 0 bytes; no partition image acquired.

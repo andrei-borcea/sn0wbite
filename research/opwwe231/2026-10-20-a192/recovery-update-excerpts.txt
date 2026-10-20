@@ -1,0 +1,18 @@
+# Selected recovery log lines, obtained from a historical bugreport.
+# Source: init_boot/bugreport-recovery/FS__cache__recovery__last_log
+# Relative recovery timestamps retained; full property dump and unrelated logs omitted.
+# The checksum warning precedes the patch result and successful verification.
+# 5b7df291 is only an image checksum prefix, not a complete digest or an OTA ZIP identifier.
+
+L587: [    0.966710] I:Update package id: /cache/update.zip
+L602: [    1.602155] Source: OnePlus/OPWWE231/OPWWE231:14/AW2A.240903.001.A3.OPWWE231_11_A.190.260521/01:user/release-keys
+L603: [    1.603727] Target: OnePlus/OPWWE231/OPWWE231:14/AW2A.240903.001.A3.OPWWE231_11_A.192.260910/01:user/release-keys
+L1201: [  262.821557] Patching init_boot image...
+L1202: [  262.821930] Patching /dev/block/bootdevice/by-name/init_boot
+L1203: [  262.906668] Partition contents don't have the expected checksum
+L1204: [  262.991099] 148328448 bytes free on /cache (8388608 needed)
+L1205: [  263.340228]   now 5b7df291
+L1206: [  263.631639]   caches dropped
+L1207: [  264.728236] Verification read succeeded (attempt 1)
+L1372: [  313.971860] select download bin file:/vendor/firmware/mcufirmware/OPWWE231/OPWWE231_M55_2609051748.bin
+L20962: [  627.353550] Installing mcu firmware ... result:0
