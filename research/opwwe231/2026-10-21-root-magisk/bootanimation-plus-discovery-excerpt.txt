@@ -1,0 +1,28 @@
+OPWWE231 A.192 — proprietary boot animation path discovery
+Captured: 21 October 2026
+Source: `adb logcat -d -v threadtime`, filtered for the BootAnimation tag,
+during a boot where the standard AOSP path
+(/system/media/bootanimation.zip) had been overlaid with a replacement file
+via a Magisk module, with its hash confirmed correct on the live filesystem,
+yet the stock animation still played. This excerpt is the line that resolved
+it.
+
+10-21 11:12:13.275   706  1478 D BootAnimation: mIsWristBandAnimation: 0
+10-21 11:12:13.275   706  1478 D BootAnimation: Playing files = /system/media/bootanimation/bootanimation-plus.zip/part1, Requested repeat = 0, playUntilComplete = false
+
+=== Confirmed directory contents (not the standard single AOSP zip) ===
+$ adb shell su -c 'ls -la /system/media/bootanimation/'
+-rw-r--r-- 1 root root 3033444 bootanimation-op.zip
+-rw-r--r-- 1 root root 2845661 bootanimation-plus.zip   <- the one actually played, per the log line above
+-rw-r--r-- 1 root root  237152 rbootanimation-op.zip
+-rw-r--r-- 1 root root  129537 rbootanimation-plus.zip
+-rw-r--r-- 1 root root  940124 wbootanimation.zip
+
+/system/media/bootanimation.zip (the standard AOSP path) exists on this
+device and is a valid, correctly formatted bootanimation.zip, but is not what
+this build's customized BootAnimation implementation actually reads from.
+
+Finding, generalized: this OnePlus/OPPO-customized BootAnimation reads from
+/system/media/bootanimation/bootanimation-plus.zip, not the standard AOSP
+/system/media/bootanimation.zip. This is undocumented outside this trace and
+is likely shared by other Wear devices in the same OnePlus/OPPO ROM family.

@@ -4,3 +4,7 @@
 
 # macOS filesystem metadata.
 .DS_Store
+
+# Python bytecode cache.
+__pycache__/
+*.pyc

@@ -1,0 +1,32 @@
+{
+  "collection_date": "2026-10-21",
+  "publication_scope": "Selected evidence from a live session that unlocked the bootloader, achieved root via Magisk, took a full non-userdata partition backup, and customized the boot animation. No raw partition images, APKs or firmware binaries are included; only text excerpts, hashes and a size/hash manifest.",
+  "private_source_paths": "Relative to backups/oneplus-watch-2/. Originals remain excluded by /backups/ in .gitignore.",
+  "sources": {
+    "2026-10-21-root-magisk-sources/post-fs-data-trace.log": {
+      "sha256": "72c2ed8db6421d448e7552e9641de2436678869825376cda903c36c0a18d51c4",
+      "bytes": 442,
+      "description": "Timestamped trace written by the Magisk module's post-fs-data.sh during a successful boot-animation mount, confirming execution order and timing."
+    },
+    "2026-10-21-root-magisk-sources/full-logcat-this-boot.txt": {
+      "sha256": "dd6d32e5f4a49ec6a88d37716847c697d057300ab162c296e0f0e1dabd42cfca",
+      "bytes": 681061,
+      "description": "Full logcat buffer for the boot that resolved the bootanimation-plus.zip path discovery. Source for bootanimation-plus-discovery-excerpt.txt."
+    },
+    "2026-10-21-full-system-backup/SHA256SUMS": {
+      "sha256": "3b05fd92c6743805c0c6442df861bcd850e1ed9e1d7b9c7ac05e2f6f3655cb41",
+      "bytes": 4891,
+      "description": "SHA-256 digests of all 62 acquired non-userdata partition images. Source for system-backup-manifest.csv; the images themselves are not published."
+    }
+  },
+  "other_evidence": {
+    "magisk-architecture-bug-excerpts.txt": "Reconstructed from in-session `file` and `adb getprop`/`adb logcat` command output at the time of the architecture-mismatch diagnosis; no single private log file backs this excerpt as a whole.",
+    "boot-patch-on-device-excerpt.txt": "Reconstructed from the on-device boot_patch.sh run's own stdout, captured in-session via adb shell."
+  },
+  "excluded_by_policy": [
+    "All .img partition contents (backups/oneplus-watch-2/2026-10-21-full-system-backup/*.img)",
+    "The Magisk release APK and its extracted binaries",
+    "The custom boot animation PNG frames and packaged zip",
+    "userdata partition (not acquired by choice; contains the owner's personal data)"
+  ]
+}

@@ -1,6 +1,17 @@
 # Watch 2 recovery and brick research
 
-Research date: **20 October 2026**. Target: **OPWWE231 A.192**.
+Research date: **20 October 2026**, updated **21 October 2026**. Target:
+**OPWWE231 A.192**.
+
+**Update, 21 October 2026: the bootloader is now unlocked on our unit, and a
+documented, verified restoration path exists.** See
+[Root access and boot customization](./root-and-boot-customization.md) for the
+full account, including a real recovery performed during this work (a
+wrong-architecture Magisk patch produced an unbootable `init_boot`, recovered
+through the bootloader's own `EDL mode` / `Reboot` menu, which exposed `adb`
+in `recovery` state and let us reach fastboot again). The sections below
+describe the **locked-bootloader** state as it stood on 20 October; they are
+left as originally written for that record, with this note as the correction.
 
 The [fastboot evidence](../research/opwwe231/2026-10-20-a192/fastboot-excerpts.txt)
 records the locked bootloader and unsupported partition readback. The EDL
@@ -46,3 +57,31 @@ validation before applying them to this device.
 A successful readback would satisfy only part of the [backup requirements](./device-and-storage.md).
 Neither the current diagnostics nor an older stock package preserves the owner's
 complete device state.
+
+## Cross-reference: OnePlus Watch 3 EDL research (same chip, same wall)
+
+A public repository researching EDL recovery for the **OnePlus Watch 3 (OPWWE251)**
+independently confirms the Watch 3 shares our Watch 2's Monaco/SW5100 platform, and
+its own detailed findings — not its summary table — line up with everything above:
+
+- **No partition read or write was achieved.** Its own `edl_confirmation.md` lists
+  "reading partitions via EDL" as unknown, pending a loader that was never obtained.
+  The README's "EDL read: works" line describes reaching EDL mode, not reading data.
+- **EDL entry on the Watch 3 needed a physical D+/GND short** on the board. Our Watch 2
+  needed no hardware at all — `adb reboot edl` drops it into Sahara mode from software
+  alone (see the EDL finding already in this document's history).
+- Qualcomm's VIP (Validated Image Programming) protocol gates any real flash/read
+  operation behind authorization packets generated live by OPPO's own signing backend
+  (WCSM/OCSM) and discarded after each session. The researcher reconstructed the rest of
+  the flash protocol but explicitly could not substitute for these two packets, and
+  named obtaining them from someone with backend access as their own next step — i.e.,
+  insider access to OPPO's infrastructure, not a reverse-engineering gap.
+- The same source independently confirms CVE-2026-25262 (the Qualcomm Sahara
+  write-what-where disclosed at Black Hat Asia 2026) does not list Monaco among
+  affected chips, matching our own reading of the advisory.
+
+Net effect: an independent party investigating the same chip generation hit the same
+wall for the same reason — a live, server-side cryptographic gate designed specifically
+to prevent exactly this kind of offline EDL write — strengthening rather than changing
+the conclusion above. EDL is not currently a usable restoration or extraction path for
+this device without OEM backend cooperation.

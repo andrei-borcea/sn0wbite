@@ -1,0 +1,49 @@
+# Selected evidence from static analysis of com.google.android.gms 26.40.32
+# (240300-995630914), pulled from the watch, and from the watch's own
+# recovery logs. Class names are REA-assigned human-readable labels for
+# R8-obfuscated GMS classes (e.g. Lcxqh; -> UpdateUrlLogFormatter); original
+# obfuscated names are kept in the smali source comment.
+
+## Download and install target (UpdateDownloadHandler)
+# The downloaded package is written locally as one of:
+const-string v10, "update_s.zip"
+const-string v11, "update.zip"
+# This matches the installer-visible name seen in every recorded recovery
+# log: "Update package id: /cache/update.zip".
+
+## Where GMS stores an offered update's URL (UpdateInstallationController)
+const-string v1, "control.installation.current_update_url"
+const-string v3, "control.installation.update_url_changed_at"
+const-string v6, "Update URL changed from \"%s\" to \"%s\"."
+# Both the old and new URL are passed through UpdateUrlLogFormatter (below)
+# before being written into that log line.
+
+## Log redaction (UpdateUrlLogFormatter, Lcxqh;)
+# def a(url):
+#   if url is null/empty: return ""
+#   if NOT <resolved feature flag>.b(): return url            # unmodified
+#   else:                                                      # redact
+#     name = Uri.parse(url).getLastPathSegment()
+#     if name is null/empty: return ""
+#     return "..." + last min(6, len(name)) chars of name
+# The live value of that feature flag was not read (would need a runtime
+# flag dump); whether a real update URL appears in logcat in full or only
+# as a short masked filename fragment on this build is therefore unresolved
+# by static analysis alone. The Query_Update string formatter is the same
+# apparatus referenced in docs/ota-and-ohealth.md's OppoOtaUtils findings;
+# this is Google's own independent build/log-redaction mechanism.
+
+## Separate, already-verified channel: gservices "update_url"
+# A minimal custom BroadcastReceiver app (dev.sn0wbite.otareader,
+# backups/.../init_boot/ota-reader-app/, already built, installed, run and
+# uninstalled in a prior pass) queries
+#   content://com.google.android.gsf.gservices  key="update_url"
+# directly -- a raw provider value, not a formatted/redacted log line.
+# Result captured: {"update_url":null,"rows":1}, consistent with no update
+# currently offered. This is the reliable channel for capturing a real,
+# full, unredacted URL automatically if/when Google ever offers one again.
+
+## Historical install count (recovery logs)
+# 11 historical OTA installations are recorded (last_log, last_log.1
+# through last_log.10), all via /cache/update.zip, consistent with the
+# A.190->A.192 flow already documented.

@@ -1,0 +1,71 @@
+OPWWE231 A.192 — Magisk boot_patch.sh run directly on the watch (correct fix)
+Captured: 21 October 2026
+Source: `adb shell` invocation of the unmodified, official Magisk v30.7
+boot_patch.sh and util_functions.sh, with the armeabi-v7a (32-bit) magiskboot,
+magiskinit and magisk binaries extracted from the official release APK placed
+alongside them in /data/local/tmp. Run against the stock, validated A.144
+init_boot.img. BOOTMODE=false (no live --preinit-device detection; offline
+patch of a file, not the running boot partition).
+
+$ BOOTMODE=false sh ./boot_patch.sh init_boot.img
+
+Parsing boot image: [init_boot.img]
+HEADER_VER      [4]
+KERNEL_SZ       [0]
+RAMDISK_SZ      [1205739]
+OS_VERSION      [13.0.0]
+OS_PATCH_LEVEL  [2025-05]
+PAGESIZE        [4096]
+CMDLINE         []
+RAMDISK_FMT     [gzip]
+VBMETA
+Loading cpio: [ramdisk.cpio]
+Loading cpio: [ramdisk.cpio]
+Add file [init] (100750)
+Create directory [overlay.d] (0750)
+Create directory [overlay.d/sbin] (0750)
+Add file [overlay.d/sbin/magisk.xz] (100644)
+Add file [overlay.d/sbin/stub.xz] (100644)
+Add file [overlay.d/sbin/init-ld.xz] (100644)
+Patch with flag KEEPVERITY=[false] KEEPFORCEENCRYPT=[false]
+Loading cpio: [ramdisk.cpio.orig]
+Backup [init] -> [.backup/init.xz]
+Record new entry: [overlay.d] -> [.backup/.rmlist]
+Record new entry: [overlay.d/sbin] -> [.backup/.rmlist]
+Record new entry: [overlay.d/sbin/init-ld.xz] -> [.backup/.rmlist]
+Record new entry: [overlay.d/sbin/magisk.xz] -> [.backup/.rmlist]
+Record new entry: [overlay.d/sbin/stub.xz] -> [.backup/.rmlist]
+Create directory [.backup] (0000)
+Add file [.backup/.magisk] (100000)
+Dumping cpio: [ramdisk.cpio]
+Parsing boot image: [init_boot.img]
+HEADER_VER      [4]
+KERNEL_SZ       [0]
+RAMDISK_SZ      [1205739]
+OS_VERSION      [13.0.0]
+OS_PATCH_LEVEL  [2025-05]
+PAGESIZE        [4096]
+CMDLINE         []
+RAMDISK_FMT     [gzip]
+VBMETA
+Repack to boot image: [new-boot.img]
+RAMDISK_FMT: [gzip] -> [lz4_legacy]
+HEADER_VER      [4]
+KERNEL_SZ       [0]
+RAMDISK_SZ      [1325165]
+OS_VERSION      [13.0.0]
+OS_PATCH_LEVEL  [2025-05]
+PAGESIZE        [4096]
+CMDLINE         []
+
+Note: the gzip -> lz4_legacy ramdisk recompression is magiskboot's own
+default repack behavior, confirmed unrelated to the architecture bug above —
+the same conversion happens whether the embedded binaries are the correct
+32-bit ones or the incorrect 64-bit ones; lz4_legacy decoding is a standard,
+widely supported kernel ramdisk format.
+
+=== Root confirmed after flashing the resulting image ===
+$ adb shell su -c id
+uid=0(root) gid=0(root) groups=0(root) context=u:r:magisk:s0
+$ adb shell ps -A | grep magisk
+root            676     1      14948   3224 0                   0 S magiskd

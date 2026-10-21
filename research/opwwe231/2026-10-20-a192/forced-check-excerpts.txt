@@ -1,0 +1,27 @@
+# Selected logcat lines from two forced live update checks, 20 October 2026.
+# Source A: phone logcat, captured around a forced Bluetooth reconnect
+#   (adb shell svc bluetooth disable; enable), which triggers OHealth's
+#   OTACheckManager.onConnect -> checkDeviceVersion using the real, live
+#   paired-device info (not a synthetic/guessed request).
+# Source B: watch logcat, captured after
+#   `adb shell am start -a android.settings.SYSTEM_UPDATE_SETTINGS`
+#   (the public action Settings itself sends), which opens
+#   com.google.android.gms/.update.SystemUpdateWearableActivity.
+# Device identifiers already masked by the OEM's own log formatting
+# (e.g. "AC:*:9D:86") are left as the source rendered them.
+
+## Source A: phone, real app, real reconnect
+19:13:04.010 OTACheckManager: Health_onConnect isReset: false, isOobeFinish: true: AC:*:9D:86
+19:13:04.318 RetrofitHelper: Health_getWeatherApi class = interface com.heytap.health.device.ota.cloud.OppoOtaApiService process=com.heytap.health.international
+19:13:04.801 OTAVersionManager: Health_requestVersion fail with msg: no new version
+19:13:04.801 OTACheckManager: Health_checkDeviceVersion--> there is no newer version from server
+
+## Source B: watch, direct launch of the public system-update-settings screen
+19:15:21.849 ActivityTaskManager: START u0 {act=android.settings.SYSTEM_UPDATE_SETTINGS ... cmp=com.google.android.gms/.update.SystemUpdateWearableActivity} ... result code=0
+19:15:23.085 Checkin: [CheckinApiChimeraService] onGetService
+19:15:23.298 SystemUpdate: [Wearable,CmaSystemUpdateWearable] systemUpdateStatus=(0x000), percent=(-1.0)
+19:15:23.307 ActivityTaskManager: Displayed com.google.android.gms/.update.SystemUpdateWearableActivity for user 0: +1s507ms
+
+## Attempted direct launch of OHealth's internal OTA activity (bypassing the
+## UI, which excludes it for this Wear OS device) — rejected:
+java.lang.SecurityException: Permission Denial: starting Intent { ... cmp=com.heytap.health.international/com.heytap.health.device.ota.OTAUpdateActivity } from null (pid=26011, uid=2000) not exported from uid 10379

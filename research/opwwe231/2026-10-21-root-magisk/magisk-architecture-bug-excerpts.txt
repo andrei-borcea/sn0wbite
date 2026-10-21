@@ -1,0 +1,40 @@
+OPWWE231 A.192 — Magisk architecture bug evidence
+Captured: 21 October 2026
+Source: live `adb shell`, local `file`/REA analysis of extracted init_boot.img ramdisks
+
+=== Device's own reported ABI (ground truth) ===
+$ adb shell getprop ro.product.cpu.abi
+armeabi-v7a
+$ adb shell getprop ro.product.cpu.abilist
+armeabi-v7a,armeabi
+
+=== /init extracted from init_boot.img patched by the Magisk APP on the paired
+    phone (arm64 host); this is the image that caused the boot failure ===
+$ file init
+init: ELF 64-bit LSB executable, ARM aarch64, ... statically linked, stripped
+
+=== /init extracted from init_boot.img patched by running Magisk's own
+    boot_patch.sh directly on the watch (32-bit host == 32-bit target); this
+    image booted and granted working root ===
+$ file init
+init: ELF 32-bit LSB executable, ARM, EABI5 version 1 (SYSV), statically
+linked, BuildID[sha1]=4d7211bf9984e5d9af02881092e9ec79a11f5e1d, stripped
+
+=== init_boot.img header fields confirming no kernel is present on this
+    split-GKI device (the signal Magisk's packer normally inspects to choose
+    an architecture) ===
+kernel_size: 0
+ramdisk_size: 1205739 (stock A.144) / 1325165 (Magisk-patched)
+header_version: 4
+
+=== Boot failure symptom after flashing the wrong-architecture image ===
+$ adb logcat -d
+--------- beginning of crash
+F libc    : Fatal signal 6 (SIGABRT), code -1 (SI_QUEUE) in tid 2165 (init), pid 2165 (init)
+F libc    : crash_dump helper failed to exec, or was killed
+
+Device became unresponsive to both adb and fastboot afterward (bootloader
+logo frozen on screen); fastboot was recovered only through the bootloader's
+own `EDL mode` / `Reboot` recovery menu, which exposed adb in `recovery`
+state. `adb reboot bootloader` from that state restored normal fastboot
+access, from which the stock init_boot.img was reflashed.

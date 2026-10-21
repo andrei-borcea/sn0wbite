@@ -54,16 +54,77 @@
     "no_new_version_responses": 4,
     "separation": "Observed OHealth proprietary cloud-check responses do not establish the WearOS/GMS system OTA A190->A192 download path. No conclusion that the watch update did not occur follows from these phone no-new-version responses."
   },
+  "reconstructed_query_update_protocol": {
+    "evidence_type": "Live client reconstructed from static analysis (AES-CTR, key/IV from a 15-char token plus a 10-entry constant table), sent to the real server.",
+    "endpoint_used": "https://ifota-term-eu.coloros.com/post/Query_Update",
+    "tool": "/oppo_ota_query.py, /ota_check_menu.py (repo root)",
+    "requests_sent": [
+      {"romVersion": "A.192", "otaVersion_matches_romVersion": true, "declares_real_state": true, "result": "SUCCEED, no new version"},
+      {"romVersion": "A.190", "otaVersion_matches_romVersion": false, "declares_real_state": false, "result": "SUCCEED, no new version"},
+      {"romVersion": "A.190", "otaVersion_matches_romVersion": true, "declares_real_state": false, "result": "SUCCEED, no new version"}
+    ],
+    "round_trip_verified": true,
+    "down_url_received": false,
+    "note": "Encryption confirmed correct both ways (server accepted and decrypted our requests; we decrypted its responses). The server never returned a format/validation error for any declared version."
+  },
+  "forced_check_20261020": {
+    "evidence_type": "Live checks triggered through the real app and the real watch, not synthetic requests.",
+    "excerpts_file": "forced-check-excerpts.txt",
+    "ohealth_direct_activity_launch": {
+      "method": "adb shell am start -n com.heytap.health.international/com.heytap.health.device.ota.OTAUpdateActivity",
+      "result": "blocked",
+      "reason": "SecurityException: not exported from uid 10379 (activity has no android:exported=true and no intent filter)"
+    },
+    "ohealth_triggered_by_real_reconnect": {
+      "method": "adb shell svc bluetooth disable; svc bluetooth enable (on the phone)",
+      "mechanism": "OTACheckManager implements the device manager's onConnect(mac, isReset, isOobeFinish) callback; a normal reconnect with isOobeFinish=true calls checkDeviceVersion using the live, real DMProto.ConnectDeviceInfo from the paired watch",
+      "result": "checkDeviceVersion--> there is no newer version from server",
+      "significance": "Real app, real device fields (not our guessed otaPrefix/productName/otaVersion), real server call, same negative outcome as our reconstructed client."
+    },
+    "watch_system_update_settings_screen": {
+      "method": "adb shell am start -a android.settings.SYSTEM_UPDATE_SETTINGS",
+      "result": "opened without a permission error (public action); triggered a real Google Checkin call (CheckinApiChimeraService onGetService); systemUpdateStatus=(0x000), percent=(-1.0)",
+      "visual_confirmation": "not obtained - watch was on its charging cradle, which shows a full-screen charging animation over any foreground app"
+    },
+    "genuine_rollback_blocked_by": [
+      "No root and a still-locked bootloader: cannot flash an actually older firmware image to make the watch's real state older.",
+      "No Bluetooth link interception attempted: the real app and the real watch both report the watch's true current state, which cannot be falsified without either of the above."
+    ]
+  },
+  "watch_update_mechanism": {
+    "evidence_type": "Static analysis of com.google.android.gms 26.40.32 (240300-995630914), pulled from the watch; corroborated by the watch's own recovery logs and a prior, already-executed gservices probe.",
+    "excerpts_file": "watch-update-mechanism-excerpts.txt",
+    "download_target_filenames": ["update.zip", "update_s.zip"],
+    "install_mechanism": "Recovery boots with --update_package=/cache/update.zip, as seen in every recorded recovery log.",
+    "historical_install_count": 11,
+    "url_storage": {
+      "persisted_key": "control.installation.current_update_url",
+      "change_log_format": "Update URL changed from \"%s\" to \"%s\".",
+      "log_redaction": "The logged URL is passed through a formatter that returns it unmodified if a resolved feature flag is off, or truncates it to '...' plus up to the last 6 characters of the filename if the flag is on. The flag's live value was not read; whether a real URL would appear in full in logcat on this build is unresolved."
+    },
+    "unredacted_channel": {
+      "method": "content://com.google.android.gsf.gservices key=\"update_url\", queried via a minimal custom BroadcastReceiver app (dev.sn0wbite.otareader)",
+      "already_built_installed_queried_uninstalled": true,
+      "source_location": "backups/oneplus-watch-2/2026-10-20-inspection/init_boot/ota-reader-app/",
+      "result": {"update_url": null, "rows": 1},
+      "significance": "Not run through any log formatter; reads GMS's own stored value directly. The reliable channel for capturing a real, complete URL automatically if/when Google offers one."
+    }
+  },
   "outcome": {
     "a192_download_started": false,
     "a192_url_recovered": false,
     "current_init_boot_obtained": false,
-    "complete_device_dump_acquired": false
+    "complete_device_dump_acquired": false,
+    "reconstructed_query_update_protocol_confirmed_correct": true,
+    "real_app_and_real_watch_confirm_no_update_offered": true,
+    "watch_update_download_and_storage_mechanism_identified": true
   },
   "limitations": [
     "A successful catalog check does not force an offer of the installed build.",
     "Denied cache access cannot establish absence or deletion of an update package.",
     "Static code establishes available branches, not execution of a hidden page.",
-    "No user/account identifiers, device addresses, private URLs, health messages or decoder keys are included."
+    "No user/account identifiers, device addresses, private URLs, health messages or decoder keys are included.",
+    "A genuine (non-synthetic) version rollback was not produced; it requires root/unlocked bootloader or Bluetooth link interception, neither available or attempted in this pass.",
+    "The live value of the update-URL log-redaction feature flag was not read; static analysis establishes the formatter's logic, not its current effect on this build."
   ]
 }
