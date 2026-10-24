@@ -1,0 +1,45 @@
+# watchOS 6.3.1 (17U224, Watch5,4 / T8006) kernelcache: PAC + Apple IMPDEF register census.
+# Tool: tools/opwwe231/watchos/port/pac_census.py (Capstone, skipdata). No Apple firmware is published.
+# This is the scope of the boot-chain port patch. NOTE: QEMU -cpu max implements FEAT_PAuth natively,
+# so the PAC sites only need patching for the Unicorn (no-PAC) harness, not for the QEMU full-system path.
+
+=== PAC / Apple-register census (Capstone) ===
+instructions scanned: 6541312
+PAC sites total: 331911
+  blraa_call     98621
+  pac_compute    92758
+  ldraa_load     88595
+  ret_auth       40377
+  braa_branch    11560
+
+Apple IMPDEF / PAC-key sysreg sites: 361 (82 distinct)
+  s3_1_c15_c0_0      23
+  s3_4_c15_c2_1      12
+  s3_3_c15_c8_0      11
+  s3_2_c15_c2_0      10
+  s3_2_c15_c3_0      10
+  s3_2_c15_c4_0      10
+  s3_2_c15_c5_0      10
+  s3_2_c15_c6_0      10
+  s3_2_c15_c7_0      10
+  s3_1_c15_c1_0      10
+  s3_2_c15_c0_0      9
+  s3_2_c15_c1_0      9
+  s3_2_c15_c10_0     8
+  s3_2_c15_c9_0      8
+  s3_1_c15_c5_0      7
+  s3_0_c15_c4_1      7
+  s3_0_c15_c4_0      7
+  s3_5_c15_c0_0      6
+  s3_5_c15_c0_1      6
+  s3_1_c15_c6_0      6
+  s3_1_c15_c2_0      5
+  s3_1_c15_c3_0      5
+  s3_1_c15_c4_0      5
+  s3_1_c15_c7_0      5
+  s3_1_c15_c8_0      5
+  s3_1_c15_c9_0      5
+  s3_1_c15_c10_0     5
+  s3_2_c15_c15_0     5
+  s3_2_c15_c14_0     5
+  s3_2_c15_c13_0     5

@@ -1,0 +1,29 @@
+# T8006 (Apple S5) platform device map, from the watchOS DeviceTree (device-tree/arm-io).
+# Offsets are within the arm-io MMIO window; absolute = SoC base (0x2_0000_0000 class) + offset.
+# This is the device-model spec for a QEMU T8006 machine. Source: Apple DeviceTree.n146bap, plaintext IM4P.
+
+node                       type/compatible                  offset       size irq
+aic                        interrupt-controller       0x002d180000 0x00008000 
+aic-timebase               timer                      0x002d188000 0x00001000 
+pmgr                       pmgr                       0x002d000000 0x00180000 'i'
+clpc                       clpc                       0x0208f44000 0x00004000 
+uart0                      uart                       0x0000000000 0x00000000 0x106
+uart2                      uart                       0x002e508000 0x00004000 0x108
+wdt                        wdt                        0x003d2b0000 0x00004000 0xad
+gpio                       interrupt-controller       0x0000000000 0x00000000 <28B 1e0000001f0
+mcc                        mcc                        0x0000000000 0x00000000 
+aop                        aop                        0x004c400000 0x00060000 ['a', '', '', '`
+aop-gpio                   interrupt-controller       0x004d008000 0x00004000 ['Q', '', '', 'R
+rtp                        rtp                        0x004cc00000 0x00060000 ['k', '', '', 'j
+smc                        smc                        0x003e400000 0x00020000 <16B c0000000bf0
+sep                        sep                        0x0042400000 0x0000c000 ['C', '', '', 'B
+ans                        ans                        0x0077400000 0x0000c000 <20B f7000000f60
+sio                        sio                        0x002f400000 0x00010000 <16B 21010000200
+disp0                      display-subsystem          0x0018000000 0x002f0000 <36B ca000000d00
+i2c1                       i2c                        0x002e014000 0x00001000 0x11c
+i2c3                       i2c                        0x002e01c000 0x00001000 0x11e
+uart1                      uart                       0x0000000000 0x00000000 0x107
+
+# essential for a minimal boot-to-console machine: aic (interrupts), aic-timebase (timer), pmgr (clocks),
+# uart0 (console, compatible uart-1,samsung). Coprocessors sep/ans/aop/rtp/smc/sio are mailbox IOPs -> stub first.
+# disp0 (display-subsystem) is needed only for the UI milestone.

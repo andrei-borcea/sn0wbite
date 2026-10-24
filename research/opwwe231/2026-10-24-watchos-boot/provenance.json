@@ -1,0 +1,13 @@
+{
+  "collection_date": "2026-10-24",
+  "publication_scope": "Static analysis of the supplied watchOS 6.3.1 kernelcache and DeviceTree for an emulation boot: an instruction census (PAC and Apple IMPDEF system registers) and the platform MMIO map. No Apple firmware, kernelcache bytes or DeviceTree bytes are published; only counts and the public device addresses.",
+  "sources": {
+    "kernelcache.release.watch5 (from the OTA, decoded Mach-O)": "pac-and-register-census.txt is the output of tools/opwwe231/watchos/port/pac_census.py (Capstone skipdata) over the code segments.",
+    "DeviceTree.n146bap.im4p (plaintext)": "t8006-platform-device-map.txt is decoded from device-tree/arm-io node reg properties."
+  },
+  "excluded_by_policy": [
+    "kernelcache and DeviceTree binaries",
+    "any Apple firmware",
+    "the dyld shared cache and rootfs"
+  ]
+}

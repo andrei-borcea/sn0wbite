@@ -106,8 +106,14 @@ provide. The technique (PAC-strip + Apple-register stub + flat identity memory +
 patch set, validated to run deep into boot in emulation.
 
 The remaining frontier is the platform: once the kernel reaches for AIC/PMGR/timer MMIO and the SEP/ANS coprocessors, those need
-device models. That is the point where an Apple-machine QEMU fork (`qemu-t8030` / Aleph `xnu-qemu-arm64`, both iOS-13-era
-references) becomes the better host to adapt toward T8006, using the same boot_args and DeviceTree this harness validated.
+device models. That is the point where a QEMU full-system machine takes over. The full patch scope is in the
+[census](../../research/opwwe231/2026-10-24-watchos-boot/pac-and-register-census.txt) (331,911 PAC sites, 82 Apple IMPDEF
+registers); the platform spec is the [T8006 device map](./platform-device-map.md); the phased route to the UI is the
+[boot-chain port plan](./boot-chain-port-plan.md).
+
+**QEMU implements PAC and the 16 KB granule natively** (`-cpu max`), so on the QEMU path the 331,911 PAC sites do not need
+patching at all -- only the Apple IMPDEF registers and the device models do. The PAC-strip tooling here is for the Unicorn
+(no-PAC) harness. This is why the full-system QEMU route, not a 331k-site static patch, is the vehicle toward userland and the UI.
 
 ## Tools and next steps
 

@@ -9,6 +9,7 @@
 | [watchos/probe](./watchos/probe/cpuprobe.c) | `cpuprobe`: reads the CPU ID registers from EL0 (static aarch64) | [Bring-up measurements](../../docs/watchos/bring-up-status.md) |
 | [watchos/bootargs](./watchos/bootargs/) | `boot_args.h` + `mk_bootargs`: the watchOS kernel entry struct a loader puts in x0 | [Boot chain reconstruction](../../docs/watchos/boot-chain-reconstruction.md) |
 | [watchos/emu](./watchos/emu/boot_harness.py) | `boot_harness.py`: runs the kernelcache reset vector in Unicorn with our boot_args (early-boot test) | [Boot chain reconstruction](../../docs/watchos/boot-chain-reconstruction.md#testing-the-boot-in-emulation) |
+| [watchos/port](./watchos/port/) | `pac_census.py` + `kernel_patch.py`: census and rewrite of the PAC / Apple-register sites | [Boot-chain port plan](../../docs/watchos/boot-chain-port-plan.md) |
 | [magisk](./magisk/README.md) | Patch an `init_boot.img` with Magisk on the watch | |
 
 The built images are in [releases/opwwe231](../../releases/opwwe231/README.md). Build with the Android NDK on macOS (`BUILD.md`).
