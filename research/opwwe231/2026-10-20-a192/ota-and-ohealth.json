@@ -57,7 +57,7 @@
   "reconstructed_query_update_protocol": {
     "evidence_type": "Live client reconstructed from static analysis (AES-CTR, key/IV from a 15-char token plus a 10-entry constant table), sent to the real server.",
     "endpoint_used": "https://ifota-term-eu.coloros.com/post/Query_Update",
-    "tool": "/oppo_ota_query.py, /ota_check_menu.py (repo root)",
+    "tool": "tools/ota/oppo_ota_query.py, tools/ota/ota_check_menu.py",
     "requests_sent": [
       {"romVersion": "A.192", "otaVersion_matches_romVersion": true, "declares_real_state": true, "result": "SUCCEED, no new version"},
       {"romVersion": "A.190", "otaVersion_matches_romVersion": false, "declares_real_state": false, "result": "SUCCEED, no new version"},

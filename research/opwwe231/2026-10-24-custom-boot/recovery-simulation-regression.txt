@@ -1,0 +1,191 @@
+# V9B menu logic regression run in --sim mode on the watch (src/test_sim9.sh, tests T1..T11). Nothing real is touched in --sim.
+##### T1 wear os
+exit=0
+[0] === sn0wmenu V9B pid=5727 sim=1 idle=30
+[0] BCB at entry: 'VUOTO'
+[0] target 0 'WATCHOS TEST' -> /data/local/tmp/s9/nopayload (missing)
+[0] target 1 'PAYLOAD OK' -> /data/local/tmp/s9/pay_ok.sh (present)
+[0] target 2 'PAYLOAD FAIL' -> /data/local/tmp/s9/pay_fail.sh (present)
+[0] target 3 'PAYLOAD KILL' -> /data/local/tmp/s9/pay_kill.sh (present)
+[0] ready: 0 key device(s), 4 target(s)
+[1] key script code=116
+[1] LEAVE reboot, (wear os)
+[1] SIM: sys.powerctl reboot,
+##### T2 navigation, payloads, info, shutdown (+ a live deadman that must stay quiet)
+exit=0
+[0] === sn0wmenu V9B pid=5745 sim=1 idle=60
+[0] BCB at entry: 'VUOTO'
+[0] target 0 'WATCHOS TEST' -> /data/local/tmp/s9/nopayload (missing)
+[0] target 1 'PAYLOAD OK' -> /data/local/tmp/s9/pay_ok.sh (present)
+[0] target 2 'PAYLOAD FAIL' -> /data/local/tmp/s9/pay_fail.sh (present)
+[0] target 3 'PAYLOAD KILL' -> /data/local/tmp/s9/pay_kill.sh (present)
+[0] ready: 0 key device(s), 4 target(s)
+[1] key script code=63
+[1] key script code=116
+[1] key script code=116
+[1] target 'WATCHOS TEST': payload /data/local/tmp/s9/nopayload missing
+[2] key script code=63
+[2] key script code=116
+[2] LAUNCH 'PAYLOAD OK' /data/local/tmp/s9/pay_ok.sh
+[2] > hello from the payload
+[2] > a long second line that has to wrap in the verbose window of the menu
+[4] payload 'PAYLOAD OK' returned 0
+[4] key script code=63
+[5] key script code=116
+[5] LAUNCH 'PAYLOAD FAIL' /data/local/tmp/s9/pay_fail.sh
+[5] payload 'PAYLOAD FAIL' returned 3
+[5] key script code=63
+[5] key script code=63
+[6] key script code=116
+[6] key script code=63
+[6] key script code=63
+[7] key script code=63
+[7] key script code=116
+[7] key script code=63
+[8] key script code=63
+[8] key script code=116
+[8] LEAVE shutdown, (power off)
+[8] SIM: sys.powerctl shutdown,
+--- deadman log
+[0] deadman armed: idle 120+45s, stuck 20s, grace 10s, cap 300s, battery 15%
+--- during payload ok: bcb / mark
+   b   o   o   t   -   r   e   c   o   v   e   r   y  \0  \0  \0
+   S   N   0   W   P   A   Y   L   O   A   D       O   K  \0  \0
+--- after exit: bcb head / mark
+  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0
+  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0
+##### T3 payload kills the menu, then the next start
+exit=137
+[0] === sn0wmenu V9B pid=5763 sim=1 idle=60
+[0] BCB at entry: 'VUOTO'
+[0] target 0 'WATCHOS TEST' -> /data/local/tmp/s9/nopayload (missing)
+[0] target 1 'PAYLOAD OK' -> /data/local/tmp/s9/pay_ok.sh (present)
+[0] target 2 'PAYLOAD FAIL' -> /data/local/tmp/s9/pay_fail.sh (present)
+[0] target 3 'PAYLOAD KILL' -> /data/local/tmp/s9/pay_kill.sh (present)
+[0] ready: 0 key device(s), 4 target(s)
+[1] key script code=63
+[1] key script code=116
+[1] key script code=63
+[2] key script code=63
+[2] key script code=63
+[2] key script code=116
+[2] LAUNCH 'PAYLOAD KILL' /data/local/tmp/s9/pay_kill.sh
+Killed 
+--- state left behind
+   b   o   o   t   -   r   e   c   o   v   e   r   y  \0  \0  \0
+   S   N   0   W   P   A   Y   L   O   A   D       K   I   L   L
+exit=0
+[0] === sn0wmenu V9B pid=5771 sim=1 idle=4
+[0] BCB at entry: 'BOOT-RECOVERY'
+[0] the previous dual boot attempt 'PAYLOAD KILL' did not come back cleanly
+[0] target 0 'WATCHOS TEST' -> /data/local/tmp/s9/nopayload (missing)
+[0] target 1 'PAYLOAD OK' -> /data/local/tmp/s9/pay_ok.sh (present)
+[0] target 2 'PAYLOAD FAIL' -> /data/local/tmp/s9/pay_fail.sh (present)
+[0] target 3 'PAYLOAD KILL' -> /data/local/tmp/s9/pay_kill.sh (present)
+[0] ready: 0 key device(s), 4 target(s)
+[4] LEAVE reboot, (idle timeout)
+[4] SIM: sys.powerctl reboot,
+--- state after the restart
+  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0
+  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0
+##### T4 idle timeout 4 s
+exit=0
+[0] === sn0wmenu V9B pid=5778 sim=1 idle=4
+[0] BCB at entry: 'VUOTO'
+[0] target 0 'WATCHOS TEST' -> /data/local/tmp/s9/nopayload (missing)
+[0] target 1 'PAYLOAD OK' -> /data/local/tmp/s9/pay_ok.sh (present)
+[0] target 2 'PAYLOAD FAIL' -> /data/local/tmp/s9/pay_fail.sh (present)
+[0] target 3 'PAYLOAD KILL' -> /data/local/tmp/s9/pay_kill.sh (present)
+[0] ready: 0 key device(s), 4 target(s)
+[4] LEAVE reboot, (idle timeout)
+[4] SIM: sys.powerctl reboot,
+##### T5 deadman vs a frozen menu (BCB set by hand at +1 s must be cleared)
+deadman gone after ~7s; alive=no
+[0] deadman armed: idle 120+45s, stuck 3s, grace 6s, cap 100s, battery 15%
+[8] DEADMAN: menu stuck or gone -> clearing the BCB, init reboots
+--- bcb after
+  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0  \0
+##### T6 deadman without any menu (grace 3)
+exit=0
+[0] deadman armed: idle 120+45s, stuck 20s, grace 3s, cap 100s, battery 15%
+[5] DEADMAN: no menu heartbeat -> clearing the BCB, init reboots
+##### T7 pinned session: the deadman must stand down
+exit=0
+[0] === sn0wmenu V9B pid=5799 sim=1 idle=60
+[0] BCB at entry: 'VUOTO'
+[0] target 0 'WATCHOS TEST' -> /data/local/tmp/s9/nopayload (missing)
+[0] target 1 'PAYLOAD OK' -> /data/local/tmp/s9/pay_ok.sh (present)
+[0] target 2 'PAYLOAD FAIL' -> /data/local/tmp/s9/pay_fail.sh (present)
+[0] target 3 'PAYLOAD KILL' -> /data/local/tmp/s9/pay_kill.sh (present)
+[0] ready: 0 key device(s), 4 target(s)
+[1] key script code=63
+[1] key script code=63
+[1] key script code=116
+[1] STOCK recovery: deadman pinned, exec
+[1] SIM: exec /system/bin/recovery
+wd: 000000000718 000000000823 1
+exit=124 (124 = still alive after 12 s)
+[0] deadman armed: idle 120+45s, stuck 2s, grace 2s, cap 3s, battery 15%
+##### T8 payload timeout (--payload-max 2)
+exit=0
+[0] === sn0wmenu V9B pid=5805 sim=1 idle=8
+[0] BCB at entry: 'VUOTO'
+[0] target 0 'SLOW' -> /data/local/tmp/s9/pay_slow.sh (present)
+[0] ready: 0 key device(s), 1 target(s)
+[0] key script code=63
+[1] key script code=116
+[1] key script code=116
+[1] LAUNCH 'SLOW' /data/local/tmp/s9/pay_slow.sh
+[4] payload timeout: killing it
+[4] payload 'SLOW' returned -1
+[12] LEAVE reboot, (idle timeout)
+[12] SIM: sys.powerctl reboot,
+##### T9 low battery through a fake battery dir
+discharging 10%: exit=0 (0 = fired)
+[0] deadman armed: idle 120+45s, stuck 20s, grace 100s, cap 100s, battery 15%
+[1] DEADMAN: low battery -> clearing the BCB, init reboots
+charging 10%: exit=124 (124 = stayed quiet)
+[0] deadman armed: idle 120+45s, stuck 20s, grace 100s, cap 100s, battery 15%
+discharging 40%: exit=124 (124 = stayed quiet)
+[0] deadman armed: idle 120+45s, stuck 20s, grace 100s, cap 100s, battery 15%
+##### T10 payload output: 40 lines reach the window, only the first 30 reach the flight recorder
+exit=0
+stderr '> LINE' lines: 40   flight recorder '> line' lines: 30
+[1] LAUNCH 'CHATTY' /data/local/tmp/s9/pay_chatty.sh
+[2] payload 'CHATTY' returned 0
+##### T11 missing targets file is reported
+[0] targets: cannot open /nonexistent.conf errno=2
+[0] ready: 0 key device(s), 0 target(s)
+##### done
+frames:
+frame_000.ppm
+frame_001.ppm
+frame_002.ppm
+frame_003.ppm
+frame_004.ppm
+frame_005.ppm
+frame_006.ppm
+frame_007.ppm
+frame_008.ppm
+frame_009.ppm
+frame_010.ppm
+frame_011.ppm
+frame_012.ppm
+frame_013.ppm
+frame_014.ppm
+frame_015.ppm
+frame_016.ppm
+frame_017.ppm
+frame_018.ppm
+frame_019.ppm
+
+frames10:
+frame_000.ppm
+frame_001.ppm
+frame_002.ppm
+frame_003.ppm
+frame_004.ppm
+frame_005.ppm
+frame_006.ppm
+frame_007.ppm
+frame_008.ppm

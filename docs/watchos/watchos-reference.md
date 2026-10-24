@@ -1,6 +1,6 @@
 # watchOS reference and feasibility
 
-Public metadata: [watchOS reference JSON](../research/opwwe231/2026-10-20-a192/watchos-reference.json).
+Public metadata: [watchOS reference JSON](../../research/opwwe231/2026-10-20-a192/watchos-reference.json).
 We publish package identity and the archive digest; no Apple firmware accompanies
 this repository.
 

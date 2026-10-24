@@ -5,7 +5,7 @@ transitioned from **locked** (as recorded in the
 [20 October collection](../2026-10-20-a192/README.md)) to **unlocked
 (orange)** during this session.
 
-Full narrative: [Root access and boot customization](../../../docs/root-and-boot-customization.md).
+Full narrative: [Root access and boot customization](../../../docs/device/root-and-boot-customization.md).
 
 | File | Contents |
 | --- | --- |

@@ -1,0 +1,34 @@
+# OPWWE231 A.192: evidence for the live verbose boot screen (docs/custom-boot/boot-screen.md). 24 October 2026.
+
+== 1. The stock player ignores a zip it cannot read, and shows the Android logo instead
+(test zip under /data/local/tmp, label shell_data_file; logcat -b main -s BootAnimation:D)
+BootAnimation: Animation customzation path: /system/media/bootanimation/bootanimation-plus.zip
+BootAnimation: readytorun init egl done
+BootAnimation: No animation file
+Same zip after `chcon u:object_r:system_file:s0`: the player loads it.
+
+== 2. Frames are decoded when they are shown, and edits inside the zip file are seen
+Two zips of the same layout, every frame red (a) or green (b), 10 fps, 6 parts of 10 frames plus a looping part.
+`dd if=b.zip of=live.zip conv=notrunc` at t=3 s while the animation was playing. Centre pixel of screencap -p:
+shot  3 t=  1.6s center=(255, 0, 0)
+shot  4 t=  2.2s center=(255, 0, 0)
+shot  5 t=  2.9s center=(255, 0, 0)
+shot  6 t=  3.5s center=(0, 255, 0)
+shot 14 t=  8.0s center=(0, 255, 0)
+
+== 3. Player log lines for a zip animation (no "ShownTiming start" line exists for it; one "Playing files" line per part)
+BootAnimation: Animation customzation path: /system/media/bootanimation/bootanimation-plus.zip
+BootAnimation: BootAnimationPreloadStopTiming start time: 1698911ms
+BootAnimation: Playing files = /system/media/bootanimation/bootanimation-plus.zip/live, Requested repeat = 1, playUntilComplete = false
+(first frame about 0.73 s after PreloadStop)
+
+== 4. Boot timeline of the stock boot (dmesg seconds)
+12.15 init: processing action (post-fs-data) from (/system/etc/init/hw/init.rc:683)
+14.08 init: starting service 'exec 11 (/debug_ramdisk/magisk --post-fs-data)'
+14.37 init: starting service 'bootanim'...
+logcat: sf_stop_bootanim at 13:00:39.487, sys.boot_completed processed 13:00:40.310 (about 25 s of boot animation)
+
+== 5. First real boot with bootlog running (/data/local/tmp/sn0wbite_bootlog.txt)
+bootlog: 30 slots primed, 2257 kernel lines
+bootlog: player started 225 ms ago
+bootlog: boot completed, leaving

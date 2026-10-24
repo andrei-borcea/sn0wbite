@@ -2,8 +2,8 @@
 
 Inspection date: **20 October 2026**. Target: **OPWWE231 A.192**.
 
-Public evidence: [selected recovery output](../research/opwwe231/2026-10-20-a192/recovery-update-excerpts.txt)
-and [OTA/OHealth findings](../research/opwwe231/2026-10-20-a192/ota-and-ohealth.json).
+Public evidence: [selected recovery output](../../research/opwwe231/2026-10-20-a192/recovery-update-excerpts.txt)
+and [OTA/OHealth findings](../../research/opwwe231/2026-10-20-a192/ota-and-ohealth.json).
 
 ## Update investigation
 
@@ -69,7 +69,7 @@ path.
 
 We re-implemented the app's AES-CTR scheme (key/IV derived from a random
 15-character token plus a 10-entry constant table embedded in the app; see
-[`oppo_ota_query.py`](../oppo_ota_query.py))
+[`oppo_ota_query.py`](../../tools/ota/oppo_ota_query.py))
 and sent a real `Query_Update` request to `https://ifota-term-eu.coloros.com/post/Query_Update`
 with the watch's own current version strings (`otaVersion` =
 `ro.build.version.ota`, `romVersion` = `A.192`). The `imei` field must be a
@@ -90,7 +90,7 @@ channel either.
 
 ### Declaring an older version changes nothing
 
-Using [`ota_check_menu.py`](../ota_check_menu.py),
+Using [`ota_check_menu.py`](../../tools/ota/ota_check_menu.py),
 we also sent two requests that declared `romVersion=A.190` (the watch's
 previous build, per the recovery log) instead of its real current `A.192`:
 once with `otaVersion` still containing the real build's `A.192` token (a
@@ -216,7 +216,7 @@ consistent answer.
 
 We reverse engineered `com.google.android.gms` 26.40.32, pulled from the
 watch, to trace the real download/install/logging path. Selected evidence:
-[`tools/../watch-update-mechanism-excerpts.txt`](../research/opwwe231/2026-10-20-a192/watch-update-mechanism-excerpts.txt).
+[`tools/../watch-update-mechanism-excerpts.txt`](../../research/opwwe231/2026-10-20-a192/watch-update-mechanism-excerpts.txt).
 
 - **Download target.** `UpdateDownloadHandler` writes the fetched package
   locally as `update.zip` (or `update_s.zip` for a streaming variant). This

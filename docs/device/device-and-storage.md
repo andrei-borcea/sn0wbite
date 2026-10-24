@@ -2,10 +2,10 @@
 
 Inspection date: **20 October 2026**. Target: **OnePlus Watch 2, OPWWE231 A.192**.
 
-Public evidence: [device properties](../research/opwwe231/2026-10-20-a192/device.json),
-[ADB excerpts](../research/opwwe231/2026-10-20-a192/adb-excerpts.txt),
-[fastboot excerpts](../research/opwwe231/2026-10-20-a192/fastboot-excerpts.txt),
-and [all 63 partition mappings and sizes](../research/opwwe231/2026-10-20-a192/partitions.csv).
+Public evidence: [device properties](../../research/opwwe231/2026-10-20-a192/device.json),
+[ADB excerpts](../../research/opwwe231/2026-10-20-a192/adb-excerpts.txt),
+[fastboot excerpts](../../research/opwwe231/2026-10-20-a192/fastboot-excerpts.txt),
+and [all 63 partition mappings and sizes](../../research/opwwe231/2026-10-20-a192/partitions.csv).
 
 ## Device baseline
 
@@ -93,9 +93,9 @@ adb -s "$WATCH_ADB_SERIAL" shell 'command -v su'
 adb -s "$WATCH_ADB_SERIAL" shell ls -l /dev/block/by-name
 ```
 
-The [captured ADB errors](../research/opwwe231/2026-10-20-a192/adb-excerpts.txt)
+The [captured ADB errors](../../research/opwwe231/2026-10-20-a192/adb-excerpts.txt)
 show the historical failed root request and storage reads. The excerpts preserve
 source line numbers. They do not constitute a complete interactive session.
 
 See [recovery research](./recovery.md) for the remaining restoration requirements
-and the [evidence policy](./evidence-policy.md) for publication boundaries.
+and the [evidence policy](../evidence-policy.md) for publication boundaries.

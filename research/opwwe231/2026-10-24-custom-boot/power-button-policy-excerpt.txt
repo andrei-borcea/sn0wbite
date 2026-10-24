@@ -1,0 +1,38 @@
+# OPWWE231 A.192 (Android 14, OPWWE231_11_A.192): how the hardware buttons are wired in the framework. Captured 24 October 2026 over adb with root.
+# Literal lines selected from `dumpsys window policy` and `settings list system|global`.
+
+$ dumpsys window policy | grep -i -E "longPress|power|stem|doublePress"
+    mShortPressOnPowerBehavior=SHORT_PRESS_POWER_CLOSE_IME_OR_GO_HOME
+    mLongPressOnPowerBehavior=LONG_PRESS_POWER_NOTHING
+    mVeryLongPressOnPowerBehavior=VERY_LONG_PRESS_POWER_GLOBAL_ACTIONS
+    mDoublePressOnPowerBehavior=MULTI_PRESS_POWER_LAUNCH_TARGET_ACTIVITY
+    mTriplePressOnPowerBehavior=MULTI_PRESS_POWER_NOTHING
+    mShortPressOnStemPrimaryBehavior=SHORT_PRESS_PRIMARY_LAUNCH_ALL_APPS
+    mDoublePressOnStemPrimaryBehavior=DOUBLE_PRESS_PRIMARY_SWITCH_RECENT_APP
+    mLongPressOnStemPrimaryBehavior=LONG_PRESS_PRIMARY_LAUNCH_VOICE_ASSISTANT
+      KeyCode=KEYCODE_POWER, LongPress=false, VeryLongPress=true, MaxMultiPressCount=5
+      KeyCode=KEYCODE_STEM_PRIMARY, LongPress=true, VeryLongPress=false, MaxMultiPressCount=2
+
+$ settings list system | grep -i -E "button|shortcut"
+end_button_behavior=2
+multifunction_double_shortcut_component=com.google.android.apps.walletnfcrel/com.google.commerce.tapandpay.wear.cardlist.WalletThemedWearCardListActivity
+multifunction_single_shortcut_component=com.heytap.wearable.sports/com.heytap.wearable.sports.MainActivity
+navigation_double_shortcut_component=com.google.android.clockwork.settings/com.google.android.clockwork.settings.operation.RecentActivity
+navigation_long_press_shortcut_component=com.google.android.wearable.assistant/com.google.android.wearable.assistant.MainActivity
+
+$ settings list global | grep -i -E "power_button|stem_primary|side_button"
+power_button_double_press=null
+power_button_long_press=null
+power_button_short_press=null
+power_button_triple_press=null
+power_button_very_long_press=null
+side_button=1
+stem_primary_button_long_press=null
+
+$ pm path com.oplus.wearable.sysui
+package:/system/priv-app/HeyClockworkSysUi/HeyClockworkSysUi.apk
+$ pm path com.android.systemui
+(no output: this build has no com.android.systemui package; the OPLUS Clockwork SysUI replaces it)
+
+# In recovery the two key devices report: qpnp_pon (KEY_VOLUMEDOWN 114 and KEY_POWER 116) and gpio-keys (KEY_F5, KEY_WAKEUP, no events seen).
+# Wear OS maps qpnp_pon 114 to STEM_PRIMARY and 116 to POWER (qpnp_pon.kl).

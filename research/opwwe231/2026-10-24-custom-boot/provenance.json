@@ -1,0 +1,19 @@
+{
+  "collection_date": "2026-10-24",
+  "publication_scope": "Evidence for the custom recovery menu and the live boot screen on OPWWE231 A.192: flight recorder text read back from misc, a simulation regression log, strings of the stock boot animation player, the power button policy and player log excerpts. No firmware, ramdisk or partition contents are included here; the modified images are published separately under releases/.",
+  "private_source_paths": "Relative to backups/oneplus-watch-2/. Originals stay excluded by /backups/ in .gitignore.",
+  "sources": {
+    "tools/recovery-menu/notes/flightlog_v9b_first_test_2026-10-24.txt": "Flight recorder dump read with read_flightlog.sh after the V9B run; the published file keeps only the three sessions of the v9 menu line (v9, v9, V9B) and adds a comment header.",
+    "tools/recovery-menu/notes/sim_regression_v9b_2026-10-24.txt": "Output of tools/opwwe231/recovery-menu/src/test_sim9.sh run as root on the watch; copied with a one-line header.",
+    "scratchpad rea_strings.json": "REA execute-rizin-command (izz) on /system/lib/libbootanimation.so pulled from the watch; filtered in Python to BootAnimation method names and path/property strings. REA evidence_id ev_087f97f036dfce33ee9bd83f36ce5c6c767d54be7a8614f064b8a95d47653459."
+  },
+  "other_evidence": {
+    "power-button-policy-excerpt.txt": "Selected lines from dumpsys window policy and settings list, captured in-session over adb.",
+    "live-boot-console-excerpts.txt": "Selected logcat, dmesg and screencap observations captured in-session; the red/green frame test centre pixels were decoded from screencap -p output."
+  },
+  "excluded_by_policy": [
+    "partition and ramdisk contents",
+    "the Magisk binaries",
+    "serial numbers and local paths"
+  ]
+}

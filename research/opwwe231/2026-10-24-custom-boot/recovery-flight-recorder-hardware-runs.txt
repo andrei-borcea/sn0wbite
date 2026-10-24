@@ -1,0 +1,96 @@
+# OPWWE231 custom recovery, flight recorder read back from misc (offset 0x9000) on 24 October 2026, after the first hardware runs.
+# Three sessions: v9 (fastboot exit), v9 (Wear OS exit), V9B (Wear OS exit). Lines are written by the recovery menu itself.
+# '[n]' is seconds since that session started. 'key qpnp_pon code=114' is the button that moves down, 116 (KEY_POWER) selects.
+[0] deadman armed: idle 120+45s, stuck 20s, grace 60s, cap 3000s, battery 15%
+[0] === sn0wmenu V9 pid=205 sim=0 idle=120
+[0] BCB at entry: 'BOOT-RECOVERY'
+[0] the previous dual boot attempt '' did not come back cleanly
+[0] adb: sys.usb.config=adb -> 0
+[0] display 1: connector 32 crtc 80 mode 466x466, crtc fb=0 mode_valid=1
+[0] display 1: SETCRTC errno=22
+[0] display 2: connector 32 crtc 80 mode 466x466, crtc fb=0 mode_valid=0
+[0] display: ok after 2 attempt(s)
+[0] input event0 'gpio-keys' key=1 touch=0
+[0] input event1 'qpnp_pon' key=1 touch=0
+[0] ready: 2 key device(s), 0 target(s)
+[12] key qpnp_pon code=114
+[12] key qpnp_pon code=114
+[13] key qpnp_pon code=114
+[13] key qpnp_pon code=114
+[14] key qpnp_pon code=114
+[14] key qpnp_pon code=114
+[15] key qpnp_pon code=114
+[15] key qpnp_pon code=114
+[15] key qpnp_pon code=114
+[15] key qpnp_pon code=114
+[16] key qpnp_pon code=116
+[20] key qpnp_pon code=114
+[21] key qpnp_pon code=114
+[22] key qpnp_pon code=114
+[24] key qpnp_pon code=114
+[24] key qpnp_pon code=114
+[24] key qpnp_pon code=114
+[24] key qpnp_pon code=114
+[25] key qpnp_pon code=114
+[25] key qpnp_pon code=114
+[31] key qpnp_pon code=114
+[33] key qpnp_pon code=116
+[35] key qpnp_pon code=114
+[36] key qpnp_pon code=116
+[38] key qpnp_pon code=114
+[40] key qpnp_pon code=114
+[41] key qpnp_pon code=116
+[41] LEAVE reboot,bootloader (fastboot)
+[41] display off: SETCRTC(off) -> 0
+[41] sys.powerctl 'reboot,bootloader' -> 0
+[0] deadman armed: idle 120+45s, stuck 20s, grace 60s, cap 3000s, battery 15%
+[0] === sn0wmenu V9 pid=205 sim=0 idle=120
+[0] BCB at entry: 'BOOT-RECOVERY'
+[0] adb: sys.usb.config=adb -> 0
+[0] display 1: connector 32 crtc 80 mode 466x466, crtc fb=0 mode_valid=1
+[0] display 1: SETCRTC errno=22
+[0] display 2: connector 32 crtc 80 mode 466x466, crtc fb=0 mode_valid=0
+[0] display: ok after 2 attempt(s)
+[0] input event0 'gpio-keys' key=1 touch=0
+[0] input event1 'qpnp_pon' key=1 touch=0
+[0] ready: 2 key device(s), 0 target(s)
+[8] key qpnp_pon code=114
+[9] key qpnp_pon code=114
+[10] key qpnp_pon code=114
+[10] key qpnp_pon code=114
+[11] key qpnp_pon code=114
+[11] key qpnp_pon code=114
+[12] key qpnp_pon code=114
+[12] key qpnp_pon code=114
+[13] key qpnp_pon code=114
+[13] key qpnp_pon code=114
+[15] key qpnp_pon code=116
+[22] key qpnp_pon code=116
+[25] key qpnp_pon code=114
+[25] key qpnp_pon code=114
+[27] key qpnp_pon code=116
+[27] LEAVE reboot, (wear os)
+[27] display off: SETCRTC(off) -> 0
+[27] sys.powerctl 'reboot,' -> 0
+[0] deadman armed: idle 120+45s, stuck 20s, grace 60s, cap 3000s, battery 15%
+[0] === sn0wmenu V9B pid=203 sim=0 idle=120
+[0] BCB at entry: 'BOOT-RECOVERY'
+[0] adb: sys.usb.config=adb -> 0
+[0] target 0 'WATCHOS TEST' -> /sbin/boot-watchos (missing)
+[0] display 1: connector 32 crtc 80 mode 466x466, crtc fb=0 mode_valid=1
+[0] display 1: SETCRTC errno=22
+[0] display 2: connector 32 crtc 80 mode 466x466, crtc fb=0 mode_valid=0
+[0] display: ok after 2 attempt(s)
+[0] input event0 'gpio-keys' key=1 touch=0
+[0] input event1 'qpnp_pon' key=1 touch=0
+[0] ready: 2 key device(s), 1 target(s)
+[9] key qpnp_pon code=114
+[10] key qpnp_pon code=114
+[10] key qpnp_pon code=114
+[10] key qpnp_pon code=114
+[11] key qpnp_pon code=114
+[12] key qpnp_pon code=114
+[14] key qpnp_pon code=116
+[14] LEAVE reboot, (wear os)
+[14] display off: SETCRTC(off) -> 0
+[14] sys.powerctl 'reboot,' -> 0

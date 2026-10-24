@@ -3,13 +3,19 @@
 Research date: **21 October 2026**. Target: **OPWWE231 A.192**, bootloader state
 transitioned from locked to **unlocked (orange)** during this session.
 
-This closes two open items from the [project roadmap](../README.md#roadmap):
+**Update, 24 October 2026.** The boot animation described here was replaced by a live verbose boot screen
+([Boot screen](../custom-boot/boot-screen.md)), the patched `init_boot` is published in
+[releases](../../releases/opwwe231/README.md), and the on-device patch recipe is a script,
+[`patch_init_boot_on_watch.sh`](../../tools/opwwe231/magisk/patch_init_boot_on_watch.sh). The Magisk scripts used here are the
+unmodified upstream ones; only the binaries' architecture matters.
+
+This closes two open items from the [project roadmap](../../README.md#roadmap):
 privileged storage reads, and a documented restoration path for this device.
 
 ## Summary
 
 Starting from the locked, non-rooted state recorded in the
-[20 October evidence collection](../research/opwwe231/2026-10-20-a192/README.md),
+[20 October evidence collection](../../research/opwwe231/2026-10-20-a192/README.md),
 we:
 
 1. Unlocked the bootloader (`fastboot flashing unlock`), which wipes user data.
@@ -122,7 +128,7 @@ reachable and usable on this screen. `su -c id` subsequently returned
 ## Full system backup
 
 With root, we dumped every partition **except `userdata`** (the user's own
-data; scoped out, see [evidence policy](./evidence-policy.md)) directly from
+data; scoped out, see [evidence policy](../evidence-policy.md)) directly from
 `/dev/block/by-name/<partition>`, **62 partitions in total**, each verified
 with SHA-256. The stored copies live only in the gitignored `backups/`
 directory, not in `research/`.

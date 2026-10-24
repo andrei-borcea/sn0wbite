@@ -46,3 +46,13 @@ source location, transformation and uncertainty with the evidence.
 We preserve original source contents, including historical labels. Renaming the
 private parent directory does not rewrite captured device output or manifests.
 The repository and current research target use **OnePlus Watch 2 / OPWWE231**.
+
+## Released artifacts
+
+The rules above govern **evidence**. The repository also publishes **built artifacts** under
+[`releases/`](../releases/opwwe231/README.md): the Magisk-patched `init_boot`, the modified recovery and the boot screen
+module, with checksums. These are our own modifications; they include the stock ramdisk of the firmware they were built from,
+which is why the folder says so and why no unmodified partition image is published. Raw acquisitions and complete backups stay
+under the ignored `backups/` directory: they contain identifiers, calibration data and partitions we have not reviewed.
+Before adding an artifact, search it (and, for ramdisks, its unpacked contents) for serials, account data, local paths and
+keys, and record its SHA-256 in the release's `SHA256SUMS`.

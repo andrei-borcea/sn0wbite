@@ -1,0 +1,91 @@
+# /system/lib/libbootanimation.so on OPWWE231 A.192 (133128 bytes, sha256 58ff560c6ac5b6d7...), strings listed with REA's rizin provider.
+# REA evidence_id: ev_087f97f036dfce33ee9bd83f36ce5c6c767d54be7a8614f064b8a95d47653459
+# /system/bin/bootanimation itself is a 13316 byte launcher; the player is this library (AOSP BootAnimation plus OPLUS changes).
+# The method list shows drawClock, drawProgress, drawText (clock and shutdown progress, no log text).
+
+BootAnimation methods: TimeCheckThread, android, binderDied, checkExit, delayBootanimIfNoSecure, drawClock, drawProgress, drawText, drawTexturedQuad, findBootAnimationFile, findBootAnimationFileInternal, getEglConfig, handleViewport, initDynamicColors, initFont, initShaders, initTexture, isBootReasonOta, loadAnimation, movie, onFirstRef, parseAnimationDesc, parseOrientationProperty, playAnimation, preloadAnimation, preloadZip, processDisplayEvents, projectSceneToWindow, readyToRun, resizeSurface, rotateAwayFromNaturalOrientationIfNeeded, shouldStopPlayingPart, threadLoop, updateIsTimeAccurate, validClock
+
+Strings (paths, properties, file names):
+clock_nanosleep
+clock_gettime
+libbootanimation.so
+sleep done mPreShutdown:%s
+persist.bootanim.color
+parseAnimationDesc
+desc.txt
+initFont
+/system/media/bootanimation/bootanimation-plus.zip
+WristAnimation path: %s
+sys.switch_to_mcu
+bootanimation.zip is compressed; must be only stored
+BootAnimation
+findBootAnimationFileInternal
+wait for shutdown cmd
+/system/media/bootanimation/rbootanimation-plus.zip
+/dev/block/by-name/oplusreserve1
+/system/media/bootanimation/rbootanimation-op.zip
+exitnow:%d sysexit:%d iskeyguardsecure:%d isbotanimdelaydone:%d
+Shutdown
+images/android-logo-mask.png
+validClock
+drawClock
+drawProgress
+ro.bootanim.quiescent.enabled
+ro.boot.quiescent
+clock_gettime(CLOCK_REALTIME) failed
+~BootAnimation
+/system/media/userspace-reboot.zip
+findBootAnimationFile
+/system/media/bootanimation/wbootanimation.zip
+Couldn't format time; abandoning boot animation clock
+rotateAwayFromNaturalOrientationIfNeeded
+/product/media/userspace-reboot.zip
+ro.bootanim.set_orientation_
+images/android-logo-shine.png
+debug.sf.nobootanimation
+/system/media/bootanimation/bootanimation-op.zip
+/oem/media/userspace-reboot.zip
+mIsWristBandAnimation: %d
+Error parsing trim.txt, line: %s
+bootreason ota
+trim.txt
+service.bootanim.progress
+ro.bootanim.set_orientation_logical_0
+persist.sys.displayinset.top
+persist.sys.customanim.boot
+persist.sys.bootanim.clock.enabled
+persist.sys.customanim.shutdown
+sys.boot_completed
+sys.powerctl
+ro.surface_flinger.max_graphics_width
+sys.init.userspace_reboot.in_progress
+ro.boot.theme
+ro.surface_flinger.max_graphics_height
+persist.service.bootanim.displays
+/apex/com.android.bootanimation/etc/bootanimation.zip
+/product/media/bootanimation-dark.zip
+/product/media/bootanimation.zip
+/oem/media/bootanimation.zip
+/system/media/bootanimation.zip
+/product/media/shutdownanimation.zip
+/oem/media/shutdownanimation.zip
+/system/media/shutdownanimation.zip
+service.bootanim.exit
+sys.bootanim.exit
+persist.sys.keyguard.secure
+sys.bootanim.delay_done
+persist.sys.bootanim.delay
+persist.sys.bootanim.delay_for_ota
+persist.sys.shutdown.reason
+clock_font.png
+progress_font.png
+uColorProgress
+/data/misc/bootanim/time/time_format_12_hour
+/data/misc/bootanim/time/time_is_accurate
+/data/misc/bootanim/time/last_time_change
+/data/misc/bootanim/time
+/data/misc/bootanim
+persist.sys.bootanim.play_sound
+ro.boot.bootreason
+persist.sys.color.blue
+ro.oplus.wear.oneplus.product

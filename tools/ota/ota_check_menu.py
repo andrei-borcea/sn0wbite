@@ -8,7 +8,7 @@ against the vendor server using `oppo_ota_query.py` in this same directory.
 This only ever sends the device's own, real, current version strings. It does
 not offer an option to declare a false/older version to the vendor server —
 that is a different, more invasive action and is left out on purpose; see
-docs/ota-and-ohealth.md for why, and oppo_ota_query.py's own --sweep mode
+docs/device/ota-and-ohealth.md for why, and oppo_ota_query.py's own --sweep mode
 for how to run that step yourself if you choose to.
 
 Usage:
