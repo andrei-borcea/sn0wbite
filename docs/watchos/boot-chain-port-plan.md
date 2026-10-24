@@ -23,7 +23,7 @@ Two emulation vehicles, by what they provide:
 | 0 | OTA triage, kernelcache + DeviceTree extract, `boot_args` + entry contract, hardware feature probe | — | **done** |
 | 1 | Reset vector → MMU enable → ~6 M instructions of the C boot path (PAC-strip + Apple-reg stub + flat memory + real DeviceTree) | Unicorn | **done** ([harness](../../tools/opwwe231/watchos/emu/boot_harness.py)) |
 | 1b | Full patch/census scope: 331,911 PAC sites, 82 Apple IMPDEF registers | — | **done** ([tools/port](../../tools/opwwe231/watchos/port/)) |
-| 2a | Build a reference Apple-silicon QEMU fork (`qemu-t8030` / Aleph) | QEMU | next |
+| 2a | Reference fork acquired and its XNU loader / CPU / patchfinder / device models mapped to T8006 | QEMU | **done** (below) |
 | 2b | Create a **T8006 machine**: CPU, `arm-io`, AIC, aic-timebase, PMGR, uart0; load the kernelcache with our `boot_args` + DeviceTree | QEMU | planned |
 | 2c | Reach **kernel console output** over uart0 (the first big visible milestone) | QEMU | planned |
 | 2d | Stub the coprocessor mailboxes (SEP/ANS/AOP/RTP/SMC/SIO) so boot does not hang; model ANS enough to read the rootfs | QEMU | planned |
@@ -31,6 +31,29 @@ Two emulation vehicles, by what they provide:
 | 3a | Root filesystem: our OTA is an update delta; reconstruct or obtain a full Watch5,4 rootfs + the `arm64_32` dyld shared cache | — | open risk |
 | 3b | launchd → the watchOS **SpringBoard** (carousel) runs | QEMU | planned |
 | 3c | Model `disp0` as a framebuffer → the **UI renders** in QEMU | QEMU | the goal |
+
+## Phase 2a: the reference fork, mapped (done)
+
+`qemu-t8030` (study-only clone) already implements, generically, most of what "patching the whole boot chain" means for XNU. The
+reusable pieces and how they map to our target:
+
+| Reference component | What it does | For T8006 |
+| --- | --- | --- |
+| `hw/arm/xnu.c` | loads an XNU kernelcache, **builds `boot_args` + the flattened DeviceTree**, places the kernel, enters at EL1 | reuse as-is; feed our kernelcache + the real `DeviceTree.n146bap` |
+| `include/hw/arm/xnu.h` `struct xnu_arm64_boot_args` | the boot_args layout | **matches our reverse-engineered struct exactly** (Revision, virtBase, physBase, memSize, topOfKernelData, deviceTreeP, CommandLine, bootFlags, memSizeActual) -- independent confirmation of our analysis |
+| `hw/arm/apple_a13.c` | the Apple CPU: PAC, GXF, and the Apple IMPDEF registers (`ARM64_REG_HID*`, `EHID*`, `APCTL` = `S3_x_C15_x`) | adapt the HID/EHID register set to `apple,tempest` (S5); most carry over |
+| `hw/arm/xnu_kpf.c` | the **kernel patchfinder**: bypasses AMFI/trustcache (unsigned code runs) and APFS root-auth (rootfs mounts) by pattern | adapt the match patterns to watchOS 6.3.1 (17U224) |
+| `hw/intc/apple_aic.c` | AIC interrupt controller (+ timebase) | re-base to our AIC `0x2d180000` / timer `0x2d188000` |
+| `hw/char/apple_uart.c` | the `uart-1,samsung` console | re-base to our uart0 `0x2e500000` |
+| `hw/arm/apple_dart.c` + `apple_dart-stub.c` | the DART IOMMUs (+ a stub) | our 13 DARTs; stub to pass through |
+| `hw/arm/apple_sep.c`, `apple_sart.c` | Secure Enclave + SART | stub SEP; SART for ANS |
+
+Memory map alignment (no change needed): the reference uses DRAM base `0x800000000` and the SoC/AMCC window `0x200000000` -- the
+same conventions our `boot_args` and DeviceTree use.
+
+The remaining new work (phase 2b) is a `hw/arm/t8006.c` machine: copy `t8030.c`, swap the device addresses to our
+[T8006 device map](./platform-device-map.md), set the CPU to the 2-core Tempest, trim the coprocessor set, and wire AIC + timer +
+PMGR + uart0. Then build the fork (meson/ninja) and boot our kernelcache with our DeviceTree to reach kernel console output (2c).
 
 ## Tools in place
 
