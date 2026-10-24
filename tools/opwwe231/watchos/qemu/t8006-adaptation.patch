@@ -1,0 +1,93 @@
+diff --git a/hw/arm/apple_a13.c b/hw/arm/apple_a13.c
+index d304c75..171f1d1 100644
+--- a/hw/arm/apple_a13.c
++++ b/hw/arm/apple_a13.c
+@@ -635,8 +635,7 @@ AppleA13State *apple_a13_cpu_create(DTBNode *node)
+     tcpu->phys_id = *(unsigned int*)prop->value;
+ 
+     prop = find_dtb_prop(node, "cluster-id");
+-    assert(prop->length == 4);
+-    tcpu->cluster_id = *(unsigned int*)prop->value;
++    tcpu->cluster_id = prop ? *(unsigned int*)prop->value : 0; /* Tempest (S5) is single-cluster: prop absent */
+ 
+     mpidr = 0LL | tcpu->phys_id | (1LL << 31);
+ 
+@@ -647,7 +646,7 @@ AppleA13State *apple_a13_cpu_create(DTBNode *node)
+     cpu->midr = FIELD_DP64(cpu->midr, MIDR_EL1, REVISION, 0x1);
+ 
+     prop = find_dtb_prop(node, "cluster-type");
+-    switch (prop->value[0]) {
++    switch (prop ? prop->value[0] : 'E') {
+     case 'P':
+         mpidr |= 1 << MPIDR_AFF2_SHIFT;
+         cpu->midr = FIELD_DP64(cpu->midr, MIDR_EL1, PARTNUM, 0x12); /* Lightning */
+diff --git a/hw/arm/t8030.c b/hw/arm/t8030.c
+index fd0ce37..bc5efa6 100644
+--- a/hw/arm/t8030.c
++++ b/hw/arm/t8030.c
+@@ -1780,42 +1780,42 @@ static void t8030_machine_init(MachineState *machine)
+     t8030_pmgr_setup(machine);
+     t8030_amcc_setup(machine);
+ 
+-    t8030_create_ans(machine);
++    /* sn0w: skip for minimal T8006 console */ /* t8030_create_ans(machine); */
+ 
+-    t8030_create_gpio(machine, "gpio");
+-    t8030_create_gpio(machine, "smc-gpio");
+-    t8030_create_gpio(machine, "nub-gpio");
++    /* sn0w: skip for minimal T8006 console */ /* t8030_create_gpio(machine, "gpio"); */
++    /* sn0w: skip for minimal T8006 console */ /* t8030_create_gpio(machine, "smc-gpio"); */
++    /* sn0w: skip for minimal T8006 console */ /* t8030_create_gpio(machine, "nub-gpio"); */
+ 
+-    t8030_create_i2c(machine, "i2c0");
+-    t8030_create_i2c(machine, "i2c1");
+-    t8030_create_i2c(machine, "i2c2");
+-    t8030_create_i2c(machine, "i2c3");
+-    t8030_create_i2c(machine, "smc-i2c0");
+-    t8030_create_i2c(machine, "smc-i2c1");
++    /* sn0w: skip for minimal T8006 console */ /* t8030_create_i2c(machine, "i2c0"); */
++    /* sn0w: skip for minimal T8006 console */ /* t8030_create_i2c(machine, "i2c1"); */
++    /* sn0w: skip for minimal T8006 console */ /* t8030_create_i2c(machine, "i2c2"); */
++    /* sn0w: skip for minimal T8006 console */ /* t8030_create_i2c(machine, "i2c3"); */
++    /* sn0w: skip for minimal T8006 console */ /* t8030_create_i2c(machine, "smc-i2c0"); */
++    /* sn0w: skip for minimal T8006 console */ /* t8030_create_i2c(machine, "smc-i2c1"); */
+ 
+-    t8030_create_dart(machine, "dart-usb");
+-    t8030_create_dart(machine, "dart-sio");
+-    t8030_create_dart(machine, "dart-disp0");
+-    t8030_create_usb(machine);
++    /* sn0w: skip for minimal T8006 console */ /* t8030_create_dart(machine, "dart-usb"); */
++    /* sn0w: skip for minimal T8006 console */ /* t8030_create_dart(machine, "dart-sio"); */
++    /* sn0w: skip for minimal T8006 console */ /* t8030_create_dart(machine, "dart-disp0"); */
++    /* sn0w: skip for minimal T8006 console */ /* t8030_create_usb(machine); */
+ 
+     t8030_create_wdt(machine);
+ 
+-    t8030_create_aes(machine);
++    /* sn0w: skip for minimal T8006 console */ /* t8030_create_aes(machine); */
+ 
+-    t8030_create_spmi(machine, "spmi0");
+-    t8030_create_spmi(machine, "spmi1");
+-    t8030_create_spmi(machine, "spmi2");
++    /* sn0w: skip for minimal T8006 console */ /* t8030_create_spmi(machine, "spmi0"); */
++    /* sn0w: skip for minimal T8006 console */ /* t8030_create_spmi(machine, "spmi1"); */
++    /* sn0w: skip for minimal T8006 console */ /* t8030_create_spmi(machine, "spmi2"); */
+ 
+-    t8030_create_pmu(machine, "spmi0", "spmi-pmu");
++    /* sn0w: skip for minimal T8006 console */ /* t8030_create_pmu(machine, "spmi0", "spmi-pmu"); */
+ 
+-    t8030_create_smc(machine);
+-    t8030_create_sio(machine);
++    /* sn0w: skip for minimal T8006 console */ /* t8030_create_smc(machine); */
++    /* sn0w: skip for minimal T8006 console */ /* t8030_create_sio(machine); */
+ 
+     for (int i = 0; i < T8030_NUM_SPIS; i++) {
+-        t8030_create_spi(machine, i);
++        /* sn0w: skip for minimal T8006 console */ /* t8030_create_spi(machine, i); */
+     }
+ 
+-    t8030_create_boot_display(machine);
++    /* sn0w: skip for minimal T8006 console */ /* t8030_create_boot_display(machine); */
+ 
+     tms->init_done_notifier.notify = t8030_machine_init_done;
+     qemu_add_machine_init_done_notifier(&tms->init_done_notifier);
