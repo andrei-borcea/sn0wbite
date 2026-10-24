@@ -1,8 +1,37 @@
+# sn0wbite T8006 adaptation of the qemu-t8030 fork.
+# Apply on top of a clean qemu-t8030 checkout:  cd qemu-t8030 && git apply <this>
+# then build (see docs/watchos/qemu-build-and-boot.md).
+# Covers: (1) A13 CPU node made optional for single-cluster Tempest (S5);
+#         (2) the sn0w CPU compat layer (hw/arm/sn0w_cpu.{c,h}) + its hook in
+#             apple_a13_add_cpregs(), RAZ/WI-ing the Apple IMPDEF (op0=3,CRn=15) space;
+#         (3) minimal boot-to-console machine: coprocessor creates skipped, nvram optional.
+# The sn0w layer's canonical source also lives in tools/opwwe231/watchos/qemu/sn0w/.
+#
 diff --git a/hw/arm/apple_a13.c b/hw/arm/apple_a13.c
-index d304c75..171f1d1 100644
+index d304c75..864061d 100644
 --- a/hw/arm/apple_a13.c
 +++ b/hw/arm/apple_a13.c
-@@ -635,8 +635,7 @@ AppleA13State *apple_a13_cpu_create(DTBNode *node)
+@@ -9,6 +9,7 @@
+ #include "hw/arm/xnu_dtb.h"
+ #include "hw/arm/apple_a13.h"
+ #include "hw/arm/apple_a13_gxf.h"
++#include "hw/arm/sn0w_cpu.h"
+ #include "target/arm/cpregs.h"
+ #include "arm-powerctl.h"
+ #include "sysemu/reset.h"
+@@ -553,6 +554,11 @@ static const ARMCPRegInfo apple_a13_cp_reginfo_tcg[] = {
+ static void apple_a13_add_cpregs(AppleA13State *tcpu)
+ {
+     ARMCPU *cpu = ARM_CPU(tcpu);
++    /* sn0w: RAZ/WI the Apple IMPDEF (op0=3,CRn=15) space FIRST; the real
++     * definitions below then override their own encodings. This absorbs the
++     * S5/Tempest registers the A13 model does not implement (e.g. the
++     * s3_4_c15_c2_1 write that was trapping to Undefined Instruction). */
++    sn0w_cpu_neutralize_apple_impdef(cpu);
+     define_arm_cp_regs(cpu, apple_a13_cp_reginfo_tcg);
+     apple_a13_init_gxf(tcpu);
+ }
+@@ -635,8 +641,7 @@ AppleA13State *apple_a13_cpu_create(DTBNode *node)
      tcpu->phys_id = *(unsigned int*)prop->value;
  
      prop = find_dtb_prop(node, "cluster-id");
@@ -12,7 +41,7 @@ index d304c75..171f1d1 100644
  
      mpidr = 0LL | tcpu->phys_id | (1LL << 31);
  
-@@ -647,7 +646,7 @@ AppleA13State *apple_a13_cpu_create(DTBNode *node)
+@@ -647,7 +652,7 @@ AppleA13State *apple_a13_cpu_create(DTBNode *node)
      cpu->midr = FIELD_DP64(cpu->midr, MIDR_EL1, REVISION, 0x1);
  
      prop = find_dtb_prop(node, "cluster-type");
@@ -21,11 +50,109 @@ index d304c75..171f1d1 100644
      case 'P':
          mpidr |= 1 << MPIDR_AFF2_SHIFT;
          cpu->midr = FIELD_DP64(cpu->midr, MIDR_EL1, PARTNUM, 0x12); /* Lightning */
+diff --git a/hw/arm/meson.build b/hw/arm/meson.build
+index 452a377..dda350c 100644
+--- a/hw/arm/meson.build
++++ b/hw/arm/meson.build
+@@ -4,6 +4,7 @@ arm_ss.add(when: 'CONFIG_APPLE_SOC', if_true: files(
+     's8000.c',
+     't8030.c',
+     'apple_a13.c',
++    'sn0w_cpu.c',
+     'apple_a13_gxf.c',
+     'apple_a9.c',
+     'apple_sep.c',
+diff --git a/hw/arm/sn0w_cpu.c b/hw/arm/sn0w_cpu.c
+new file mode 100644
+index 0000000..ab23f36
+--- /dev/null
++++ b/hw/arm/sn0w_cpu.c
+@@ -0,0 +1,54 @@
++/*
++ * sn0w CPU compat layer -- IMPDEF system-register neutralization.
++ *
++ * Part of the sn0wbite watchOS boot-chain port. See README.md.
++ */
++#include "qemu/osdep.h"
++#include "hw/arm/sn0w_cpu.h"
++#include "target/arm/cpregs.h"
++
++void sn0w_cpu_neutralize_impdef(ARMCPU *cpu,
++                                const Sn0wImpdefSpace *spaces, int n_spaces)
++{
++    int i, opc1;
++
++    for (i = 0; i < n_spaces; i++) {
++        /*
++         * CRm and opc2 can be wildcarded (CP_ANY), but opc1 cannot: QEMU derives
++         * the architectural min-EL / permission mask from opc1 *before* it
++         * expands the wildcard, so CP_ANY there trips a g_assert_not_reached().
++         * Enumerate opc1 0..7 and emit one blanket entry per value.
++         *
++         * ARM_CP_CONST   = reads return resetvalue (0), writes ignored (RAZ/WI).
++         * ARM_CP_OVERRIDE = a later, specific definition of any encoding inside
++         *                   this space replaces the blanket one, so a CPU model
++         *                   can still implement individual registers for real.
++         * PL1_RW is within the permission mask of every opc1 value, so the same
++         * access setting is valid for all of them.
++         */
++        for (opc1 = 0; opc1 <= 7; opc1++) {
++            ARMCPRegInfo ri = {
++                .name = "SN0W_IMPDEF_RAZWI",
++                .cp = CP_REG_ARM64_SYSREG_CP,
++                .opc0 = spaces[i].op0,
++                .opc1 = opc1,
++                .crn = spaces[i].crn,
++                .crm = CP_ANY,
++                .opc2 = CP_ANY,
++                .state = ARM_CP_STATE_AA64,
++                .access = PL1_RW,
++                .type = ARM_CP_CONST | ARM_CP_OVERRIDE,
++                .resetvalue = 0,
++            };
++            define_one_arm_cp_reg(cpu, &ri);
++        }
++    }
++}
++
++void sn0w_cpu_neutralize_apple_impdef(ARMCPU *cpu)
++{
++    static const Sn0wImpdefSpace apple_impdef[] = {
++        { .op0 = 3, .crn = 15 },
++    };
++    sn0w_cpu_neutralize_impdef(cpu, apple_impdef, ARRAY_SIZE(apple_impdef));
++}
 diff --git a/hw/arm/t8030.c b/hw/arm/t8030.c
-index fd0ce37..bc5efa6 100644
+index fd0ce37..4c175d7 100644
 --- a/hw/arm/t8030.c
 +++ b/hw/arm/t8030.c
-@@ -1780,42 +1780,42 @@ static void t8030_machine_init(MachineState *machine)
+@@ -480,9 +480,14 @@ static void t8030_memory_setup(MachineState *machine)
+ 
+     nvram = APPLE_NVRAM(qdev_find_recursive(sysbus_get_default(), "nvram"));
+     if (!nvram) {
+-        error_setg(&error_abort, "%s: Failed to find nvram device", __func__);
+-        return;
+-    };
++        /* sn0w T8006: the minimal boot-to-console machine has no ANS/NVMe, so
++         * the apple-nvram namespace is absent. nvram is not needed to reach
++         * kernel console output: proceed with an empty nvram proxy and the
++         * plain command line instead of aborting. */
++        warn_report("%s: no nvram device; booting with empty nvram proxy", __func__);
++        asprintf(&cmdline, "%s", machine->kernel_cmdline);
++        info->nvram_size = 0;
++    } else {
+     apple_nvram_load(nvram);
+ 
+     fprintf(stderr, "boot_mode: %u\n", tms->boot_mode);
+@@ -521,6 +526,7 @@ static void t8030_memory_setup(MachineState *machine)
+     if (apple_nvram_serialize(nvram, info->nvram_data, sizeof(info->nvram_data)) < 0) {
+         error_report("%s: Failed to read NVRAM", __func__);
+     }
++    }
+ 
+     if (tms->ticket_filename) {
+         if (!g_file_get_contents(tms->ticket_filename, &info->ticket_data, (gsize *)&info->ticket_length, NULL)) {
+@@ -1780,42 +1786,42 @@ static void t8030_machine_init(MachineState *machine)
      t8030_pmgr_setup(machine);
      t8030_amcc_setup(machine);
  
@@ -91,3 +218,53 @@ index fd0ce37..bc5efa6 100644
  
      tms->init_done_notifier.notify = t8030_machine_init_done;
      qemu_add_machine_init_done_notifier(&tms->init_done_notifier);
+diff --git a/include/hw/arm/sn0w_cpu.h b/include/hw/arm/sn0w_cpu.h
+new file mode 100644
+index 0000000..8f5d928
+--- /dev/null
++++ b/include/hw/arm/sn0w_cpu.h
+@@ -0,0 +1,44 @@
++/*
++ * sn0w CPU compat layer -- public interface.
++ *
++ * Part of the sn0wbite watchOS boot-chain port. See README.md in this
++ * directory for the "mount your own CPU" porting guide.
++ */
++#ifndef HW_ARM_SN0W_CPU_H
++#define HW_ARM_SN0W_CPU_H
++
++#include "cpu.h"
++
++/*
++ * An implementation-defined (IMPDEF) AArch64 system-register space, named by
++ * its fixed (op0, CRn) pair. Every (opc1, CRm, opc2) encoding inside the pair
++ * is considered part of the space.
++ *
++ *   Apple cores (Cyclone .. Firestorm, incl. the S4/S5 watch SoCs) put their
++ *   HID/EHID/ACC/CTRR/PMC/IPI/... registers at op0=3, CRn=15.
++ */
++typedef struct Sn0wImpdefSpace {
++    int op0;
++    int crn;
++} Sn0wImpdefSpace;
++
++/*
++ * Absorb every encoding in each declared IMPDEF space as RAZ/WI (read-as-zero,
++ * write-ignore) instead of letting it raise an Undefined Instruction trap.
++ *
++ * This lets a QEMU core execute a kernel built for a different CPU, which pokes
++ * dozens of vendor registers this core never heard of, without wiring every one
++ * of them by hand. Registers the core *does* model for real are declared as
++ * usual with define_arm_cp_regs() AFTER this call: they transparently override
++ * the blanket entry for their own encoding (QEMU keeps the last definition, and
++ * the blanket entry carries ARM_CP_OVERRIDE so the real one is allowed to win).
++ *
++ * Call order therefore matters: neutralize first, then your real table.
++ */
++void sn0w_cpu_neutralize_impdef(ARMCPU *cpu,
++                                const Sn0wImpdefSpace *spaces, int n_spaces);
++
++/* Convenience preset for the Apple IMPDEF space (op0=3, CRn=15). */
++void sn0w_cpu_neutralize_apple_impdef(ARMCPU *cpu);
++
++#endif /* HW_ARM_SN0W_CPU_H */

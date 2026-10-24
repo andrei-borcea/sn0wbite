@@ -50,24 +50,61 @@ So **our watchOS kernelcache loads into QEMU, the kernel patchfinder runs on it*
 instructions and no guest errors -- but no kernel console text appears yet. Two patterns (`amfi_sha1`, `trustcache16`) do not match
 because this is watchOS 6.3.1, not iOS 14; they are AMFI/trust-cache (userland) patches, not fatal to early boot.
 
-## Phase 2c: adapting the machine to T8006 (in progress)
+## Phase 2c: adapting the machine + CPU to T8006 (in progress)
 
-The CPU does not run yet because the `t8030` machine's device setup asserts/crashes on T8006 DeviceTree differences, before the
-first instruction. The adaptation ([t8006-adaptation.patch](../../tools/opwwe231/watchos/qemu/t8006-adaptation.patch)) works
-through the chain:
+The `t8030` machine did not even start the vCPU on T8006: its device setup
+asserted/crashed on DeviceTree differences before the first instruction, and
+once that was cleared the CPU trapped on Apple registers the A13 model lacks.
+The adaptation ([t8006-adaptation.patch](../../tools/opwwe231/watchos/qemu/t8006-adaptation.patch),
+status in its [README](../../tools/opwwe231/watchos/qemu/README.md)) works the chain:
 
-1. **CPU model.** `apple_a13_cpu_create` crashed (SIGSEGV) reading `cluster-id`/`cluster-type` from our CPU node -- the A13 is
-   big.LITTLE and has those props, the single-cluster Tempest (S5) has neither. Fixed: make them optional. **Done.**
-2. **Coprocessors.** The machine then asserted in `apple_sart_create` (and would in ANS/SMC/SIO/SPMI/...) on T8006 DeviceTree
-   differences. Skipped those creates for a minimal boot-to-console machine. **Done.**
-3. **nvram.** Skipping the coprocessors removed the `nvram` device (created inside the SMC), which `t8030_memory_setup` requires.
-   **Current blocker.**
+1. **CPU model.** `apple_a13_cpu_create` crashed reading `cluster-id`/`cluster-type`
+   (A13 is big.LITTLE; single-cluster Tempest has neither). Made optional. **Done.**
+2. **Coprocessors.** The machine asserted in `apple_sart_create` (and would in
+   ANS/SMC/SIO/SPMI/…) on T8006 DeviceTree differences. Skipped those creates for a
+   minimal boot-to-console machine. **Done.**
+3. **nvram.** Skipping the coprocessors removed the `nvram` device (an NVMe
+   namespace created inside the SMC/ANS), which `t8030_memory_setup` required.
+   Made optional — boot proceeds with an empty nvram proxy, which is not needed to
+   reach console. **Done:** machine init now completes and the kernel is launched
+   (`g_virt_base 0xfffffff004000000`, `entry 0x…805df8538`, cmdline passed).
+4. **Apple IMPDEF registers.** The first guest instruction trapped on
+   `msr s3_4_c15_c2_1` (a 2-instruction write thunk at `0xfffffff008b44010`, REA
+   `ev_a791894f…`) — an Apple IMPDEF register (`op0=3,CRn=15`) the A13 model does
+   not implement, so QEMU raised Undefined Instruction and the CPU spun in its
+   vector. Fixed by the modular **[sn0w CPU layer](../../tools/opwwe231/watchos/qemu/sn0w/)**,
+   which RAZ/WIs the whole Apple IMPDEF space (the A13's real registers still
+   override their own encodings). **Done:** the kernel now runs deep into early
+   boot — it sets PAN and performs per-CPU PPL lookups keyed on `MPIDR_EL1 & 0xff`.
 
-Each step gets further into machine init. The clean fix for the rest is a dedicated `hw/arm/t8006.c` that keeps the essentials
-(CPU, AIC, timer, PMGR, UART, a standalone nvram) and stubs the coprocessors, instead of skipping by hand. After that: route the
-console (the watch uses `dockchannel-uart`, not the Samsung `uart0`), and update the two 17U224 patchfinder patterns.
+### Current blocker: `TPIDR_EL1 == 0`
 
-So the pipeline is proven -- our kernelcache loads, the patchfinder patches it, `-cpu apple-a13` runs PAC natively -- and the
-remaining work to kernel console is the finite, mechanical machine adaptation tracked above.
+The kernel reaches `0xfffffff007824380`:
 
-See the [port plan](./boot-chain-port-plan.md) for the full phased route to the UI.
+```
+0xfffffff00782437c   mrs x8, tpidr_el1
+0xfffffff007824380   ldr x8, [x8, 0x4a0]     ; Data Abort, FAR = 0x4a0  →  tpidr_el1 == 0
+```
+
+(REA `ev_0c1fcd37…`.) It is a per-CPU counter increment (`cpu_data->…->[0x5c4]++`,
+the disable-preemption shape) that assumes the current CPU's `cpu_data` pointer is
+in `TPIDR_EL1` — but it is still 0. The first fault is taken to the **SP_EL0**
+sync vector (`VBAR+0x000`), a hint the early CPU stack/state is not fully set up.
+The kernel's common exception entry (`0xfffffff007df5254 → …55e0`, REA
+`ev_11b041fc…`) then runs with an invalid SP, its frame-save zeros its own text,
+and every later instruction is `udf #0` — a ~2.4 M-trap loop. So the real issue
+is upstream: the boot-CPU `cpu_data` / `TPIDR_EL1` is not established when this
+code runs, even though the machine enters the kernel exactly as it does for iOS
+on `t8030` (`x0 = boot_args`, `pc = entry`, `rvbar = entry & ~0xfff`). Resolving
+why `TPIDR_EL1` is 0 (locore path vs. a value the kernel reads and branches on) is
+the next step.
+
+### How to diagnose a boot crash
+
+`-serial file:con.log -D dbg.log -d int,guest_errors,unimp` gives the exception
+stream; `-d in_asm` dumps each translated block **once** (this build is
+`--disable-capstone`, so blocks print as raw `OBJD-T:` bytes — decode the leading
+word, little-endian). A release kernelcache has asserts compiled out, so a missing
+DeviceTree node or unset pointer surfaces as a Data Abort to a near-null FAR rather
+than a message. Map a runtime virtual address to the kernelcache with REA/rizin
+(`s <vaddr>; pd`) — slide is 0 with `kaslr-off=on`.

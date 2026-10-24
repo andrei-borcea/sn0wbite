@@ -25,7 +25,7 @@ Two emulation vehicles, by what they provide:
 | 1b | Full patch/census scope: 331,911 PAC sites, 82 Apple IMPDEF registers | — | **done** ([tools/port](../../tools/opwwe231/watchos/port/)) |
 | 2a | Reference fork acquired and its XNU loader / CPU / patchfinder / device models mapped to T8006 | QEMU | **done** (below) |
 | 2b | **QEMU fork built** (7.1.0, t8030 machine); **our watchOS kernelcache loads and the patchfinder runs** on it with our DeviceTree -- see [build & boot](./qemu-build-and-boot.md) | QEMU | **in progress** |
-| 2c | Kernel console output: adapt the machine to T8006 (CPU model fixed; coprocessors skipped; nvram is the current blocker), then route the console | QEMU | **in progress** ([patch](../../tools/opwwe231/watchos/qemu/t8006-adaptation.patch)) |
+| 2c | Kernel console output: adapt machine+CPU to T8006. **Machine init completes** (nvram made optional) and the kernel launches; the **[sn0w CPU layer](../../tools/opwwe231/watchos/qemu/sn0w/)** RAZ/WIs the Apple IMPDEF space so the kernel runs deep into early boot (PAN set, per-CPU PPL lookups). **Current blocker: `TPIDR_EL1 == 0`** Data Abort at `0x…07824380` (see [build & boot](./qemu-build-and-boot.md#current-blocker-tpidr_el1--0)). | QEMU | **in progress** ([patch](../../tools/opwwe231/watchos/qemu/t8006-adaptation.patch)) |
 | 2d | Stub the coprocessor mailboxes (SEP/ANS/AOP/RTP/SMC/SIO) so boot does not hang; model ANS enough to read the rootfs | QEMU | planned |
 | 2e | VM/pmap/scheduler come up → **launchd** starts (userland reached) | QEMU | planned |
 | 3a | Root filesystem: our OTA is an update delta; reconstruct or obtain a full Watch5,4 rootfs + the `arm64_32` dyld shared cache | — | open risk |
@@ -61,6 +61,7 @@ PMGR + uart0. Then build the fork (meson/ninja) and boot our kernelcache with ou
 - [`tools/opwwe231/watchos/emu/boot_harness.py`](../../tools/opwwe231/watchos/emu/boot_harness.py) — Unicorn early-boot test (phase 1).
 - [`tools/opwwe231/watchos/port/pac_census.py`](../../tools/opwwe231/watchos/port/pac_census.py) — Capstone census of the PAC and Apple-register sites (phase 1b).
 - [`tools/opwwe231/watchos/port/kernel_patch.py`](../../tools/opwwe231/watchos/port/kernel_patch.py) — rewrites the bulk PAC forms (Unicorn path only; QEMU needs no PAC patch).
+- [`tools/opwwe231/watchos/qemu/sn0w/`](../../tools/opwwe231/watchos/qemu/sn0w/) — the **sn0w compat layer**: a modular shim that RAZ/WIs a CPU's IMPDEF system-register space so a QEMU core can run a foreign kernel; mounted into the fork by the adaptation patch. Extensible to other SoCs (see its README).
 - [`tools/opwwe231/watchos/probe/cpuprobe.c`](../../tools/opwwe231/watchos/probe/cpuprobe.c) — the watch's core ID registers.
 
 ## Honest risks
