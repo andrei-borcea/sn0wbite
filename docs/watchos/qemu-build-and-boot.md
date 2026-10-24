@@ -77,27 +77,33 @@ status in its [README](../../tools/opwwe231/watchos/qemu/README.md)) works the c
    override their own encodings). **Done:** the kernel now runs deep into early
    boot — it sets PAN and performs per-CPU PPL lookups keyed on `MPIDR_EL1 & 0xff`.
 
-### Current blocker: `TPIDR_EL1 == 0`
+### Current blocker: `"No cpus found!"` panic (DT cpu-topology)
 
-The kernel reaches `0xfffffff007824380`:
+The `TPIDR_EL1 == 0` Data Abort above is a **symptom, not the root**. Tracing the
+call chain with the QEMU gdbstub (`-S -gdb tcp::1234` + lldb) shows the function
+at `0x…07824328` is `panic_trap_to_debugger` — its caller `0x…08b1af1c` is
+`panic()`, invoked with the format string **`"No cpus found!"`** (REA
+`ev_aa85dcf4`, string at `0x…07287d4d`). So:
 
 ```
-0xfffffff00782437c   mrs x8, tpidr_el1
-0xfffffff007824380   ldr x8, [x8, 0x4a0]     ; Data Abort, FAR = 0x4a0  →  tpidr_el1 == 0
+ml_parse_cpu_topology() finds no usable CPU
+  -> panic("No cpus found!")            0xfffffff008b1af1c
+  -> panic_trap_to_debugger()           0xfffffff007824328
+       mrs x8, tpidr_el1  (== 0, per-CPU data not set up this early)
+       ldr x8, [x8, 0x4a0]  -> Data Abort, FAR 0x4a0
+  -> exception entry runs with invalid SP, zeros its own text, loops on udf #0
 ```
 
-(REA `ev_0c1fcd37…`.) It is a per-CPU counter increment (`cpu_data->…->[0x5c4]++`,
-the disable-preemption shape) that assumes the current CPU's `cpu_data` pointer is
-in `TPIDR_EL1` — but it is still 0. The first fault is taken to the **SP_EL0**
-sync vector (`VBAR+0x000`), a hint the early CPU stack/state is not fully set up.
-The kernel's common exception entry (`0xfffffff007df5254 → …55e0`, REA
-`ev_11b041fc…`) then runs with an invalid SP, its frame-save zeros its own text,
-and every later instruction is `udf #0` — a ~2.4 M-trap loop. So the real issue
-is upstream: the boot-CPU `cpu_data` / `TPIDR_EL1` is not established when this
-code runs, even though the machine enters the kernel exactly as it does for iOS
-on `t8030` (`x0 = boot_args`, `pc = entry`, `rvbar = entry & ~0xfff`). Resolving
-why `TPIDR_EL1` is 0 (locore path vs. a value the kernel reads and branches on) is
-the next step.
+The kernel **cannot enumerate any CPU from the DeviceTree**. It is not a CPU-count
+issue: `-smp 2` (the S5's two cores) gives the identical panic. On real hardware
+iBoot fixes up the `/cpus` nodes (their `state`, `cpu-id`, enable/topology) before
+handing the DeviceTree to the kernel; QEMU has no iBoot, and the `t8030` machine
+only rewrites non-CPU nodes (pram/vram/voltage-states) — it creates the A13 CPUs
+from the `/cpus` children and *removes* any beyond `smp.cpus`, but does not write
+the runtime cpu properties the watchOS `ml_parse_cpu_topology` requires. **Next
+step:** decompile `ml_parse_cpu_topology` to learn exactly which properties/state
+it checks, inspect our real `DeviceTree.n146bap` `/cpus` nodes, and have the
+machine populate them (iBoot's job) for the two Tempest cores.
 
 ### How to diagnose a boot crash
 
