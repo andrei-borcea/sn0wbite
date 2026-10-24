@@ -81,12 +81,33 @@ rebuild the page-table bootstrap, and NOP or trap-emulate every PAC and Apple-IM
 | kernelcache `arm_init` → `kernel_bootstrap` | consume `boot_args`, `PE_init_platform`, pmap, VM, scheduler | next decompilation target: confirm the full `boot_args` tail (offset 0x2d0) and the DeviceTree handoff |
 | platform drivers (AIC/PMGR/DART/ANS/display) | Apple-SoC specific | replace with Qualcomm equivalents, or run under emulation for study |
 
+## Testing the boot in emulation
+
+A generic ARMv8.3 core (QEMU/Unicorn) has the features the real Kryo lacks (PAC, 16 KB granule, LSE), so it is where the
+*software* half of the boot chain is tested before any hardware work. [`emu/boot_harness.py`](../../tools/opwwe231/watchos/emu/boot_harness.py)
+(Unicorn) loads the kernelcache segments at their addresses, puts a synthesized `boot_args` in `x0`, and runs the reset vector,
+emulating the Apple IMPDEF and PAC registers live (the patch catalog applied at runtime: `msr` recorded, `mrs` returns the last
+written value, `retaa/retab` -> `ret`).
+
+Result (stage 1): the reset vector **reaches the MMU-enable instruction** (`msr sctlr_el1`, `0xfffffff007dfc3b8`). On the way it
+reads every `boot_args` field we supply (virtBase, physBase, memSize, topOfKernelData, the 0x2d0 field), writes 8258 entries into
+the 16 KB page tables at `topOfKernelData`, and sets TCR/TTBR/MAIR. The only things it needs are **16 Apple/PAC register sites**,
+all in the reset vector: the ten PAC key registers (`S3_0_C2_C1_0..C3_1` = APIA/APIB/APDA/APDB/APGA key lo/hi) and Apple security
+registers (`S3_4_C15_C0_4` APCTL, `S3_4_C15_C1_0/1`, `S3_4_C15_C2_0/1`). This validates the boot_args handoff and the 16 KB
+page-table bootstrap we reverse-engineered: given a correct `boot_args`, the watchOS kernel's early boot runs on a non-Apple core
+once those 16 sites are neutralized.
+
+Past MMU-enable the kernel's own page tables take over; continuing the emulation needs those tables aligned to the harness memory
+and then the DeviceTree and platform (AIC/PMGR/timer) models -- the next milestone, and the point where an Apple-machine QEMU fork
+(`qemu-t8030` / Aleph `xnu-qemu-arm64`, both iOS-13-era references) becomes the better host.
+
 ## Tools and next steps
 
 - [`tools/opwwe231/watchos/bootargs/`](../../tools/opwwe231/watchos/bootargs/) — `boot_args.h` (the struct, offsets anchored to
   the kernel's own loads) and `mk_bootargs.c` (emits the blob a loader puts in `x0`). Verified: the emitted offsets match the
   reset vector's loads exactly.
 - [`tools/opwwe231/watchos/probe/cpuprobe.c`](../../tools/opwwe231/watchos/probe/cpuprobe.c) — reads the core ID registers.
+- [`tools/opwwe231/watchos/emu/boot_harness.py`](../../tools/opwwe231/watchos/emu/boot_harness.py) — runs the reset vector in Unicorn with a synthesized `boot_args`; validates the early boot to MMU-enable.
 - Next REA targets: `arm_init` and `PE_init_platform` (full `boot_args` tail and the DeviceTree parse), then the pmap bootstrap
   (to compare the Apple physical memory map against our DRAM base `0x40000000`), and the AIC/PMGR drivers.
 
