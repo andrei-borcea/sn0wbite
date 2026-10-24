@@ -92,54 +92,34 @@ core). So both `cpu0`/`cpu1` (compatible `apple,tempest`) were stripped. Fix:
 whitelist `apple,tempest` in `KEEP_COMP`. Result: the 2.4 M-trap death spiral is
 gone and the kernel runs far past cpu-topology into early per-CPU / pmap init.
 
-### Current blocker: `panic("rtclock timebase_callback: invalid constant")`
+### Patched: the rtclock timebase panic (kernel patch, bring-up)
 
-The single `0xe7ffdeff` trap at `0x…078241b0` is the kernel's panic-finalizer
-(record context via `0x…078241f8`, then the `0xe7ffdeff` halt). gdbstub read of
-its args gives the message (x2) = **`"rtclock timebase_callback: invalid constant
-%ld / %ld"`** (REA `ev_be8eb31d`). That callback validates a mach-timebase
-`{numer, denom}`: it requires **`denom` in `[1,4]`** and `numer >= denom` (24 MHz
--> `125/3`, denom 3 — valid). It receives `{0,0}` and panics.
+Fully traced (gdbstub + REA `ev_690d2eda`): `clock_timebase_init` (`0x…079329bc`)
+reads `gPEClockFrequencyInfo.timebase_frequency_hz` (`0x…08c14e98`), whose only
+writer in the kernel is `pe_identify_machine`'s `/cpus` walk (`0x…07dd01e8`) —
+which a gdbstub race shows runs *after* `clock_timebase_init`. So the global is 0,
+the callback gets `{0, 1}`, its `a >= b` check fails, and it panics "invalid
+constant 0 / 1". An init-ordering problem, not a missing DT value.
 
-Root: `gPEClockFrequencyInfo` (at `0x…08c14e90`) is still **all zero** when the
-callback runs (confirmed by reading guest memory at the panic). The kernel's
-`pe_init` DeviceTree walk reads `"timebase-frequency"` (two readers, REA
-`ev_5e856fa1`) into `gPEClockFrequencyInfo.timebase_frequency_hz`
-(`0x…08c14e98`), but `rtclock_timebase_callback` fires **before** that walk
-populates it. So this is an init-ordering / missing-platform-setup issue, not
-just a missing DeviceTree value.
+Per the "patch now, clean later" decision, `t8030_patch_kernel` now overwrites the
+two instructions at `0x…079329bc` (`adrp x8, gPEClock; ldr x8,[x8,#0xe98]`) with
+`movz x8,#0x3600; movk x8,#0x16e,lsl#16` (x8 = 24000000), so `clock_timebase_init`
+always sees 24 MHz. Verified: the global now reads `0xd286c008/0xf2a02dc8` and the
+rtclock panic is gone. (The DT `timebase-frequency = 24 MHz` on root + cpu nodes
+stays — it is the value `pe_identify_machine` stores, just too late to matter.)
+**Clean follow-up:** establish the timebase before `clock_config` instead of
+patching (see memory).
 
-The adaptation now provides `timebase-frequency = 24 MHz` on the DT root and the
-cpu nodes (our T8006 DeviceTree ships every per-cpu frequency as 0; iBoot fills
-them on real hardware, read as 8-byte values — a 4-byte prop makes the kernel
-read 4 garbage high bits). That is correct and necessary (the `pe_init` walk will
-read it) but does not by itself clear the panic, because the timebase is consumed
-before the walk. **Next step:** find who calls `rtclock_timebase_callback` and
-where its `{numer,denom}` comes from that early — likely the timebase must be
-established from `boot_args`/the `aic-timebase` device (iBoot's job) before
-`rtclock_init`, or an init step we stubbed is the one that normally sets it.
+### Current blocker: `panic("%s: invalid bit index (%u)")` in timer setup
 
-**Traced (gdbstub + REA `ev_690d2eda`):** `clock_timebase_init` (the function at
-`0x…079329bc`) reads `gPEClockFrequencyInfo.timebase_frequency_hz` (`0x…08c14e98`)
-directly, builds `{a = freq, b = 1}`, and calls the callback; with `freq == 0`
-the callback's `a >= b` check fails (`0 >= 1` false) and it panics. That global
-has **exactly one writer** in the whole kernel — `pe_identify_machine`'s `/cpus`
-walk at `0x…07dd01e8` (it matches `state == "running"` then stores the cpu node's
-`timebase-frequency`). A gdbstub race of the two sites shows **`clock_timebase_init`
-runs before that walk even starts**, so the global is still 0 when it is read.
-The `timebase-frequency = 24 MHz` we add to the DT *is* what that walk would
-store — but the walk runs too late, so it never helps `clock_timebase_init`.
-
-So the remaining work is an **init-ordering / early-platform** fix, one of:
-  1. make the boot populate `timebase_frequency_hz` before `clock_config()` — find
-     why the `/cpus` walk (apparently `pe_identify_machine`) runs after
-     `clock_timebase_init` here when it must run before on stock hardware (likely a
-     gated early `pe_identify_machine`, or an iBoot/boot_args-seeded value we omit);
-  2. or an `xnu_kpf`-style kernel patch that defaults the timebase to 24 MHz when
-     the DT value is 0 (bring-up hack; must set the frequency, not just skip the
-     panic, or the system timer stays broken);
-  3. or confirm whether iBoot normally seeds `gPEClockFrequencyInfo` via a
-     boot_args field the fork's `xnu.c` does not fill.
+With the timebase patched the boot advances to a new single trap, whose message
+(x2) is **`"%s: invalid bit index (%u)"`** (REA `ev_66a48bd7`). The firing site is
+`0x…0793df58` (x7 caller = `0x…0793df64`): ARM generic-timer setup that writes
+`CNTKCTL_EL1` / `CNTP_CTL_EL0` and validates a "bit index" (`b.hs` -> panic) before
+`bfi`-ing it into `CNTKCTL_EL1`. The index (x8, computed just before `0x…0793df20`)
+is out of range. Next: find where that bit index comes from (likely the timer IRQ
+/ a per-cpu timer vector from the DT or `aic-timebase`) and why it is invalid.
+Still upstream of `serial_init` (console silent).
 
 ### How to diagnose a boot crash
 
