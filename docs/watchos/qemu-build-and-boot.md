@@ -119,6 +119,28 @@ where its `{numer,denom}` comes from that early — likely the timebase must be
 established from `boot_args`/the `aic-timebase` device (iBoot's job) before
 `rtclock_init`, or an init step we stubbed is the one that normally sets it.
 
+**Traced (gdbstub + REA `ev_690d2eda`):** `clock_timebase_init` (the function at
+`0x…079329bc`) reads `gPEClockFrequencyInfo.timebase_frequency_hz` (`0x…08c14e98`)
+directly, builds `{a = freq, b = 1}`, and calls the callback; with `freq == 0`
+the callback's `a >= b` check fails (`0 >= 1` false) and it panics. That global
+has **exactly one writer** in the whole kernel — `pe_identify_machine`'s `/cpus`
+walk at `0x…07dd01e8` (it matches `state == "running"` then stores the cpu node's
+`timebase-frequency`). A gdbstub race of the two sites shows **`clock_timebase_init`
+runs before that walk even starts**, so the global is still 0 when it is read.
+The `timebase-frequency = 24 MHz` we add to the DT *is* what that walk would
+store — but the walk runs too late, so it never helps `clock_timebase_init`.
+
+So the remaining work is an **init-ordering / early-platform** fix, one of:
+  1. make the boot populate `timebase_frequency_hz` before `clock_config()` — find
+     why the `/cpus` walk (apparently `pe_identify_machine`) runs after
+     `clock_timebase_init` here when it must run before on stock hardware (likely a
+     gated early `pe_identify_machine`, or an iBoot/boot_args-seeded value we omit);
+  2. or an `xnu_kpf`-style kernel patch that defaults the timebase to 24 MHz when
+     the DT value is 0 (bring-up hack; must set the frequency, not just skip the
+     panic, or the system timer stays broken);
+  3. or confirm whether iBoot normally seeds `gPEClockFrequencyInfo` via a
+     boot_args field the fork's `xnu.c` does not fill.
+
 ### How to diagnose a boot crash
 
 `-serial file:con.log -D dbg.log -d int,guest_errors,unimp` gives the exception
