@@ -3,10 +3,10 @@
 # (see docs/watchos/qemu-build-and-boot.md). Run with -smp 2 (the S5's two cores).
 # Covers: (1) apple_a13.c CPU node optional for Tempest(S5); (2) sn0w CPU layer sn0w_cpu.{c,h}
 # + hook -> RAZ/WI Apple IMPDEF (op0=3,CRn=15); (3) t8030.c minimal machine (coprocessors
-# skipped, nvram optional, DT timebase-frequency, and kernel patches forcing the two early
-# timebase readers to 24 MHz so rtclock + the generic-timer setup do not panic); (4) xnu.c
-# KEEP_COMP whitelist apple,tempest. Boot now advances through cpu-topology + timebase + timer
-# into IOKit/platform-expert init (next blocker: a NULL vcall result deref at 0x…07d2b9dc).
+# skipped, nvram optional, DT timebase-frequency, and a single load-time seed of
+# gPEClockFrequencyInfo.timebase_frequency_hz = 24 MHz so the early timebase consumers do not
+# panic); (4) xnu.c KEEP_COMP whitelist apple,tempest. Boot now advances through cpu-topology
+# + timebase into IOKit/platform-expert init (next blocker: NULL vcall-result deref 0x…07d2b9dc).
 #
 diff --git a/hw/arm/apple_a13.c b/hw/arm/apple_a13.c
 index d304c75..864061d 100644
@@ -124,41 +124,30 @@ index 0000000..ab23f36
 +    sn0w_cpu_neutralize_impdef(cpu, apple_impdef, ARRAY_SIZE(apple_impdef));
 +}
 diff --git a/hw/arm/t8030.c b/hw/arm/t8030.c
-index fd0ce37..b4cbe36 100644
+index fd0ce37..85603cc 100644
 --- a/hw/arm/t8030.c
 +++ b/hw/arm/t8030.c
-@@ -174,6 +174,30 @@ static void t8030_patch_kernel(struct mach_header_64 *hdr)
+@@ -174,6 +174,19 @@ static void t8030_patch_kernel(struct mach_header_64 *hdr)
  {
      //disable_kprintf_output = 0
      // *(uint32_t *)vtop_static(0xFFFFFFF0077142C8) = 0;
 +
-+    /* sn0w: force the mach-timebase to 24 MHz inside clock_timebase_init. It reads
-+     * gPEClockFrequencyInfo.timebase_frequency_hz (still 0 this early -- the only
-+     * writer, pe_identify_machine's /cpus walk, runs later) and the rtclock
-+     * callback panics "invalid constant 0 / 1". Replace the two instructions
-+     *     0xFFFFFFF0079329BC  adrp x8, gPEClockFrequencyInfo
-+     *     0xFFFFFFF0079329C0  ldr  x8, [x8, #0xe98]
-+     * with
-+     *     movz x8, #0x3600            (0xD286C008)
-+     *     movk x8, #0x16e, lsl #16    (0xF2A02DC8)   -> x8 = 24000000
-+     * Bring-up hack; the clean fix is to establish the timebase before
-+     * clock_config (see docs/watchos/qemu-build-and-boot.md). */
-+    *(uint32_t *)vtop_static(0xFFFFFFF0079329BC) = 0xD286C008;
-+    *(uint32_t *)vtop_static(0xFFFFFFF0079329C0) = 0xF2A02DC8;
-+    /* The timebase_frequency_hz global is __DATA,__common (zero-filled) and has 8
-+     * readers but a single late writer (pe_identify_machine's /cpus walk), so the
-+     * early readers all see 0. Patch the other early reader too -- the generic
-+     * timer setup at 0x…0793DEC4 (adrp x8, gPEClock; ldr x8,[x8,#0xe98]) that
-+     * computes a CNTKCTL_EL1 "bit index" from the frequency and panics
-+     * "%s: invalid bit index" when it is 0. Same movz/movk -> x8 = 24000000.
-+     * Whack-a-mole; the clean fix is one early seed of the global (see docs). */
-+    *(uint32_t *)vtop_static(0xFFFFFFF00793DEC4) = 0xD286C008;
-+    *(uint32_t *)vtop_static(0xFFFFFFF00793DEC8) = 0xF2A02DC8;
++    /* sn0w: seed the platform timebase. gPEClockFrequencyInfo.timebase_frequency_hz
++     * (0xFFFFFFF008C14E98, __DATA,__common) is read by 8 early consumers
++     * (clock_timebase_init, the ARM generic-timer setup, ...) but written only by
++     * pe_identify_machine's /cpus walk, which runs too late -- so every early
++     * reader sees 0 and the kernel panics ("rtclock ... invalid constant 0/1",
++     * then "... invalid bit index"). On real hardware iBoot has already set this.
++     * The kernel does not re-zero __common (verified: the value survives to the
++     * first reader), so a single load-time write fixes all readers at once and
++     * the system timer runs at the real 24 MHz. This is the complete fix; the DT
++     * also carries timebase-frequency = 24 MHz for pe_identify_machine's own use. */
++    *(uint64_t *)vtop_static(0xFFFFFFF008C14E98) = 24000000;
 +
      kpf();
  }
  
-@@ -480,9 +504,14 @@ static void t8030_memory_setup(MachineState *machine)
+@@ -480,9 +493,14 @@ static void t8030_memory_setup(MachineState *machine)
  
      nvram = APPLE_NVRAM(qdev_find_recursive(sysbus_get_default(), "nvram"));
      if (!nvram) {
@@ -176,7 +165,7 @@ index fd0ce37..b4cbe36 100644
      apple_nvram_load(nvram);
  
      fprintf(stderr, "boot_mode: %u\n", tms->boot_mode);
-@@ -521,6 +550,7 @@ static void t8030_memory_setup(MachineState *machine)
+@@ -521,6 +539,7 @@ static void t8030_memory_setup(MachineState *machine)
      if (apple_nvram_serialize(nvram, info->nvram_data, sizeof(info->nvram_data)) < 0) {
          error_report("%s: Failed to read NVRAM", __func__);
      }
@@ -184,7 +173,7 @@ index fd0ce37..b4cbe36 100644
  
      if (tms->ticket_filename) {
          if (!g_file_get_contents(tms->ticket_filename, &info->ticket_data, (gsize *)&info->ticket_length, NULL)) {
-@@ -725,6 +755,14 @@ static void t8030_cpu_setup(MachineState *machine)
+@@ -725,6 +744,14 @@ static void t8030_cpu_setup(MachineState *machine)
              continue;
          }
  
@@ -199,7 +188,7 @@ index fd0ce37..b4cbe36 100644
          tms->cpus[i] = apple_a13_cpu_create(node);
          cluster_id = tms->cpus[i]->cluster_id;
  
-@@ -1712,6 +1750,15 @@ static void t8030_machine_init(MachineState *machine)
+@@ -1712,6 +1739,15 @@ static void t8030_machine_init(MachineState *machine)
                                                  &tms->bootinfo.trustcache_size);
      data = 24000000;
      set_dtb_prop(tms->device_tree, "clock-frequency", 4, &data);
@@ -215,7 +204,7 @@ index fd0ce37..b4cbe36 100644
      child = find_dtb_node(tms->device_tree, "arm-io");
      assert(child != NULL);
  
-@@ -1780,42 +1827,42 @@ static void t8030_machine_init(MachineState *machine)
+@@ -1780,42 +1816,42 @@ static void t8030_machine_init(MachineState *machine)
      t8030_pmgr_setup(machine);
      t8030_amcc_setup(machine);
  

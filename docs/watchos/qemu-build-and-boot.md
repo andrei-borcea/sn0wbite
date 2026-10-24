@@ -92,37 +92,22 @@ core). So both `cpu0`/`cpu1` (compatible `apple,tempest`) were stripped. Fix:
 whitelist `apple,tempest` in `KEEP_COMP`. Result: the 2.4 M-trap death spiral is
 gone and the kernel runs far past cpu-topology into early per-CPU / pmap init.
 
-### Patched: the rtclock timebase panic (kernel patch, bring-up)
+### Fixed (complete): the timebase (`gPEClockFrequencyInfo` seed)
 
-Fully traced (gdbstub + REA `ev_690d2eda`): `clock_timebase_init` (`0x…079329bc`)
-reads `gPEClockFrequencyInfo.timebase_frequency_hz` (`0x…08c14e98`), whose only
-writer in the kernel is `pe_identify_machine`'s `/cpus` walk (`0x…07dd01e8`) —
-which a gdbstub race shows runs *after* `clock_timebase_init`. So the global is 0,
-the callback gets `{0, 1}`, its `a >= b` check fails, and it panics "invalid
-constant 0 / 1". An init-ordering problem, not a missing DT value.
+Both early-boot panics — `rtclock ... invalid constant 0/1` and the generic-timer
+`... invalid bit index` — have the same root: `gPEClockFrequencyInfo.timebase_frequency_hz`
+(`0x…08c14e98`, `__DATA,__common`) is read by 8 early consumers but written only by
+`pe_identify_machine`'s `/cpus` walk, which (gdbstub-confirmed) runs after them, so
+each early reader sees 0. On real hardware iBoot has already populated it.
 
-Per the "patch now, clean later" decision, `t8030_patch_kernel` now overwrites the
-two instructions at `0x…079329bc` (`adrp x8, gPEClock; ldr x8,[x8,#0xe98]`) with
-`movz x8,#0x3600; movk x8,#0x16e,lsl#16` (x8 = 24000000), so `clock_timebase_init`
-always sees 24 MHz. Verified: the global now reads `0xd286c008/0xf2a02dc8` and the
-rtclock panic is gone. (The DT `timebase-frequency = 24 MHz` on root + cpu nodes
-stays — it is the value `pe_identify_machine` stores, just too late to matter.)
-**Clean follow-up:** establish the timebase before `clock_config` instead of
-patching (see memory).
-
-### Patched: the timer "invalid bit index" panic (same root as rtclock)
-
-The generic-timer setup at `0x…0793deb4` reads the *same* `timebase_frequency_hz`
-global directly (`0x…0793dec8`), gets 0, computes a bogus `CNTKCTL_EL1` bit index
-(`64 - clz(freq/divisor)` -> `0xfffffffe`), and panics `"%s: invalid bit index"`.
-That global (`gPEClockFrequencyInfo+0xe98`, `__DATA,__common` **zero-fill**) has
-**8 readers but one late writer** (`pe_identify_machine` at `0x…07dd01e8`), so every
-early reader sees 0 — image-patching the value will not stick (BSS), and patching
-readers one-by-one is whack-a-mole. For now `t8030_patch_kernel` forces 24 MHz at
-the two *early* readers that panic (`clock_timebase_init` `0x…079329bc` and the
-timer `0x…0793dec4`). **Clean follow-up:** seed the global once, early (an
-init-ordering fix or a single early-seed patch), so all 8 readers are correct and
-the system timer actually works.
+The complete fix is one line in `t8030_patch_kernel`: seed the global in guest RAM
+at load time —
+`*(uint64_t *)vtop_static(0xFFFFFFF008C14E98) = 24000000;`.
+The kernel does not re-zero `__common` (verified: the value survives to the first
+reader), so this single write makes **all 8 readers** see the real 24 MHz and the
+system timer run correctly — no per-reader code patching, no whack-a-mole. (The DT
+also carries `timebase-frequency = 24 MHz` for `pe_identify_machine`'s own use.)
+Result: the boot clears both timebase panics and advances into IOKit.
 
 ### Current blocker: NULL vcall-result deref at `0x…07d2b9dc` (IOKit)
 
