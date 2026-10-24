@@ -110,16 +110,31 @@ stays — it is the value `pe_identify_machine` stores, just too late to matter.
 **Clean follow-up:** establish the timebase before `clock_config` instead of
 patching (see memory).
 
-### Current blocker: `panic("%s: invalid bit index (%u)")` in timer setup
+### Patched: the timer "invalid bit index" panic (same root as rtclock)
 
-With the timebase patched the boot advances to a new single trap, whose message
-(x2) is **`"%s: invalid bit index (%u)"`** (REA `ev_66a48bd7`). The firing site is
-`0x…0793df58` (x7 caller = `0x…0793df64`): ARM generic-timer setup that writes
-`CNTKCTL_EL1` / `CNTP_CTL_EL0` and validates a "bit index" (`b.hs` -> panic) before
-`bfi`-ing it into `CNTKCTL_EL1`. The index (x8, computed just before `0x…0793df20`)
-is out of range. Next: find where that bit index comes from (likely the timer IRQ
-/ a per-cpu timer vector from the DT or `aic-timebase`) and why it is invalid.
-Still upstream of `serial_init` (console silent).
+The generic-timer setup at `0x…0793deb4` reads the *same* `timebase_frequency_hz`
+global directly (`0x…0793dec8`), gets 0, computes a bogus `CNTKCTL_EL1` bit index
+(`64 - clz(freq/divisor)` -> `0xfffffffe`), and panics `"%s: invalid bit index"`.
+That global (`gPEClockFrequencyInfo+0xe98`, `__DATA,__common` **zero-fill**) has
+**8 readers but one late writer** (`pe_identify_machine` at `0x…07dd01e8`), so every
+early reader sees 0 — image-patching the value will not stick (BSS), and patching
+readers one-by-one is whack-a-mole. For now `t8030_patch_kernel` forces 24 MHz at
+the two *early* readers that panic (`clock_timebase_init` `0x…079329bc` and the
+timer `0x…0793dec4`). **Clean follow-up:** seed the global once, early (an
+init-ordering fix or a single early-seed patch), so all 8 readers are correct and
+the system timer actually works.
+
+### Current blocker: NULL vcall-result deref at `0x…07d2b9dc` (IOKit)
+
+With the timebase patched the boot advances well past the timers into IOKit /
+platform-expert init. It now takes a **Data Abort, FAR 0** (ESR 0x25, read of
+address 0) at `0x…07d2b9dc` (`ldr x8, [x28]` with `x28 == 0`): the preceding
+C++ virtual call `blraa` at `0x…07d2b9cc` returned NULL and the code dereferences
+it. An IOKit object/service was not created — likely because a device we stub or
+skip for the minimal machine does not register the expected service. Next: identify
+the vtable method at `0x…07d2b9cc` and which service/object is missing, then model
+or stub enough of it. (The NULL deref then funnels into the usual panic finalizer,
+hence the second trap at `0x…078241b0`.) Console is still upstream.
 
 ### How to diagnose a boot crash
 
