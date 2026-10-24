@@ -92,17 +92,32 @@ core). So both `cpu0`/`cpu1` (compatible `apple,tempest`) were stripped. Fix:
 whitelist `apple,tempest` in `KEEP_COMP`. Result: the 2.4 M-trap death spiral is
 gone and the kernel runs far past cpu-topology into early per-CPU / pmap init.
 
-### Current blocker: a single `0xe7ffdeff` trap at `0x…078241b0`
+### Current blocker: `panic("rtclock timebase_callback: invalid constant")`
 
-The kernel now takes exactly **one** Undefined Instruction (ESR EC 0), at
-`0x…078241b0` = the word `0xe7ffdeff` (a clang "unreachable" trap, only 4 in the
-whole kernel), placed right after `bl 0x…078241f8`. So a routine the compiler
-treats as noreturn **returned**, and control fell into the trap. The call sites
-are deep per-CPU init (all `tpidr_el1 -> [+0x4a0] -> [+0x68] -> [...]`); `0x…078241f8`
-ends in a PAC-authenticated indirect call. Next step: identify `0x…0782419c`
-(the function that hits the trap) and `0x…078241f8` (the presumed-noreturn callee)
-and why it returns — likely another early-init expectation we do not yet satisfy.
-Console is still silent because this is all upstream of `serial_init`.
+The single `0xe7ffdeff` trap at `0x…078241b0` is the kernel's panic-finalizer
+(record context via `0x…078241f8`, then the `0xe7ffdeff` halt). gdbstub read of
+its args gives the message (x2) = **`"rtclock timebase_callback: invalid constant
+%ld / %ld"`** (REA `ev_be8eb31d`). That callback validates a mach-timebase
+`{numer, denom}`: it requires **`denom` in `[1,4]`** and `numer >= denom` (24 MHz
+-> `125/3`, denom 3 — valid). It receives `{0,0}` and panics.
+
+Root: `gPEClockFrequencyInfo` (at `0x…08c14e90`) is still **all zero** when the
+callback runs (confirmed by reading guest memory at the panic). The kernel's
+`pe_init` DeviceTree walk reads `"timebase-frequency"` (two readers, REA
+`ev_5e856fa1`) into `gPEClockFrequencyInfo.timebase_frequency_hz`
+(`0x…08c14e98`), but `rtclock_timebase_callback` fires **before** that walk
+populates it. So this is an init-ordering / missing-platform-setup issue, not
+just a missing DeviceTree value.
+
+The adaptation now provides `timebase-frequency = 24 MHz` on the DT root and the
+cpu nodes (our T8006 DeviceTree ships every per-cpu frequency as 0; iBoot fills
+them on real hardware, read as 8-byte values — a 4-byte prop makes the kernel
+read 4 garbage high bits). That is correct and necessary (the `pe_init` walk will
+read it) but does not by itself clear the panic, because the timebase is consumed
+before the walk. **Next step:** find who calls `rtclock_timebase_callback` and
+where its `{numer,denom}` comes from that early — likely the timebase must be
+established from `boot_args`/the `aic-timebase` device (iBoot's job) before
+`rtclock_init`, or an init step we stubbed is the one that normally sets it.
 
 ### How to diagnose a boot crash
 

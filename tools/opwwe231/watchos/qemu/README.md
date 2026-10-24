@@ -39,9 +39,13 @@ README for the porting guide.
   `KEEP_COMP` (REA `ev_aa85dcf4`/`ev_189cc62f`). Whitelisting `apple,tempest`
   clears the 2.4 M-trap death spiral; the kernel now runs far into early
   per-CPU/pmap init.
-- **Next blocker**: a single `0xe7ffdeff` "unreachable" trap at `0x…078241b0`,
-  right after a `bl` to a presumed-noreturn routine that returned. Deep in early
-  per-CPU init, still upstream of `serial_init` (console silent). Identify
-  `0x…0782419c` / `0x…078241f8` next.
+- **Next blocker**: `panic("rtclock timebase_callback: invalid constant %ld / %ld")`
+  (REA `ev_be8eb31d`; the `0xe7ffdeff` trap is the panic finalizer's halt). The
+  mach-timebase `{numer,denom}` is `{0,0}` (callback needs `denom` in `[1,4]`)
+  because `gPEClockFrequencyInfo` is still zero when rtclock runs — the `pe_init`
+  DeviceTree walk that reads `timebase-frequency` has not run yet. The patch now
+  provides `timebase-frequency = 24 MHz` (root + cpu nodes, 8-byte) which is
+  correct but consumed too late. Next: establish the timebase before `rtclock_init`
+  (boot_args / aic-timebase), still upstream of `serial_init`.
 
 Apply: `cd qemu-t8030 && git apply <this>/t8006-adaptation.patch` then rebuild.

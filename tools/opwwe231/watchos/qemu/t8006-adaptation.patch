@@ -1,14 +1,13 @@
 # sn0wbite T8006 adaptation of the qemu-t8030 fork.
-# Apply on top of a clean qemu-t8030 checkout:  cd qemu-t8030 && git apply <this>
-# then build (see docs/watchos/qemu-build-and-boot.md).
+# Apply on a clean qemu-t8030 checkout:  cd qemu-t8030 && git apply <this>  then build
+# (see docs/watchos/qemu-build-and-boot.md). Run with -smp 2 (the S5's two cores).
 # Covers:
-#  (1) A13 CPU node made optional for single-cluster Tempest (S5) in apple_a13.c;
-#  (2) the sn0w CPU compat layer (hw/arm/sn0w_cpu.{c,h}) + its hook in apple_a13_add_cpregs(),
-#      RAZ/WI-ing the Apple IMPDEF (op0=3,CRn=15) space;
-#  (3) minimal boot-to-console machine in t8030.c: coprocessor creates skipped, nvram optional;
-#  (4) xnu.c KEEP_COMP: whitelist "apple,tempest" so the DeviceTree filter does NOT strip the
-#      S5 /cpus nodes (otherwise ml_parse_cpu_topology panics "No cpus found!").
-# The sn0w layer's canonical source also lives in tools/opwwe231/watchos/qemu/sn0w/.
+#  (1) apple_a13.c: CPU node made optional for single-cluster Tempest (S5);
+#  (2) sn0w CPU compat layer (hw/arm/sn0w_cpu.{c,h}) + hook -> RAZ/WI the Apple IMPDEF
+#      (op0=3,CRn=15) sysreg space (canonical source in tools/opwwe231/watchos/qemu/sn0w/);
+#  (3) t8030.c: minimal boot-to-console machine (coprocessor creates skipped, nvram optional),
+#      timebase-frequency provided on the DT root + cpu nodes (24 MHz);
+#  (4) xnu.c KEEP_COMP: whitelist apple,tempest so the DT filter keeps the S5 /cpus nodes.
 #
 diff --git a/hw/arm/apple_a13.c b/hw/arm/apple_a13.c
 index d304c75..864061d 100644
@@ -126,7 +125,7 @@ index 0000000..ab23f36
 +    sn0w_cpu_neutralize_impdef(cpu, apple_impdef, ARRAY_SIZE(apple_impdef));
 +}
 diff --git a/hw/arm/t8030.c b/hw/arm/t8030.c
-index fd0ce37..4c175d7 100644
+index fd0ce37..2150b23 100644
 --- a/hw/arm/t8030.c
 +++ b/hw/arm/t8030.c
 @@ -480,9 +480,14 @@ static void t8030_memory_setup(MachineState *machine)
@@ -155,7 +154,38 @@ index fd0ce37..4c175d7 100644
  
      if (tms->ticket_filename) {
          if (!g_file_get_contents(tms->ticket_filename, &info->ticket_data, (gsize *)&info->ticket_length, NULL)) {
-@@ -1780,42 +1786,42 @@ static void t8030_machine_init(MachineState *machine)
+@@ -725,6 +731,14 @@ static void t8030_cpu_setup(MachineState *machine)
+             continue;
+         }
+ 
++        {
++            /* sn0w: our T8006 DeviceTree ships the per-cpu frequencies as 0
++             * (iBoot fills them on real hardware); give the timebase a sane
++             * 24 MHz so rtclock does not panic "invalid constant". */
++            uint64_t tbf = 24000000;
++            set_dtb_prop(node, "timebase-frequency", 8, &tbf);
++            set_dtb_prop(node, "fixed-frequency", 8, &tbf);
++        }
+         tms->cpus[i] = apple_a13_cpu_create(node);
+         cluster_id = tms->cpus[i]->cluster_id;
+ 
+@@ -1712,6 +1726,15 @@ static void t8030_machine_init(MachineState *machine)
+                                                 &tms->bootinfo.trustcache_size);
+     data = 24000000;
+     set_dtb_prop(tms->device_tree, "clock-frequency", 4, &data);
++    /* sn0w: watchOS reads "timebase-frequency" as a 64-bit value from the DT root
++     * (DTGetProperty then ldr x8,[val]) into gPEClockFrequencyInfo; without it
++     * rtclock_timebase_callback panics "invalid constant 0 / 0". It MUST be 8
++     * bytes -- a 4-byte prop makes the kernel read 4 garbage high bits. 24 MHz
++     * -> mach_timebase 125/3 (denominator in the required [1,4] range). */
++    {
++        uint64_t tbf64 = 24000000;
++        set_dtb_prop(tms->device_tree, "timebase-frequency", 8, &tbf64);
++    }
+     child = find_dtb_node(tms->device_tree, "arm-io");
+     assert(child != NULL);
+ 
+@@ -1780,42 +1803,42 @@ static void t8030_machine_init(MachineState *machine)
      t8030_pmgr_setup(machine);
      t8030_amcc_setup(machine);
  
