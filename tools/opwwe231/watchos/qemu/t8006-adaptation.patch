@@ -1,10 +1,13 @@
 # sn0wbite T8006 adaptation of the qemu-t8030 fork.
 # Apply on top of a clean qemu-t8030 checkout:  cd qemu-t8030 && git apply <this>
 # then build (see docs/watchos/qemu-build-and-boot.md).
-# Covers: (1) A13 CPU node made optional for single-cluster Tempest (S5);
-#         (2) the sn0w CPU compat layer (hw/arm/sn0w_cpu.{c,h}) + its hook in
-#             apple_a13_add_cpregs(), RAZ/WI-ing the Apple IMPDEF (op0=3,CRn=15) space;
-#         (3) minimal boot-to-console machine: coprocessor creates skipped, nvram optional.
+# Covers:
+#  (1) A13 CPU node made optional for single-cluster Tempest (S5) in apple_a13.c;
+#  (2) the sn0w CPU compat layer (hw/arm/sn0w_cpu.{c,h}) + its hook in apple_a13_add_cpregs(),
+#      RAZ/WI-ing the Apple IMPDEF (op0=3,CRn=15) space;
+#  (3) minimal boot-to-console machine in t8030.c: coprocessor creates skipped, nvram optional;
+#  (4) xnu.c KEEP_COMP: whitelist "apple,tempest" so the DeviceTree filter does NOT strip the
+#      S5 /cpus nodes (otherwise ml_parse_cpu_topology panics "No cpus found!").
 # The sn0w layer's canonical source also lives in tools/opwwe231/watchos/qemu/sn0w/.
 #
 diff --git a/hw/arm/apple_a13.c b/hw/arm/apple_a13.c
@@ -218,6 +221,18 @@ index fd0ce37..4c175d7 100644
  
      tms->init_done_notifier.notify = t8030_machine_init_done;
      qemu_add_machine_init_done_notifier(&tms->init_done_notifier);
+diff --git a/hw/arm/xnu.c b/hw/arm/xnu.c
+index 2ca4983..08578e1 100644
+--- a/hw/arm/xnu.c
++++ b/hw/arm/xnu.c
+@@ -43,6 +43,7 @@ static const char *KEEP_COMP[] = {
+     "N104DEV\0iPhone12,1\0AppleARM\0$",
+     "apple,twister\0ARM,v8\0$",
+     "apple,thunder\0ARM,v8\0$", "apple,lightning\0ARM,v8\0$",
++    "apple,tempest\0ARM,v8\0$", /* sn0w: S5/T8006 core -- else the DT filter strips /cpus -> "No cpus found!" */
+     "aic,1\0$",
+     "pmgr1,s8000\0$",
+     "pmgr1,t8030\0$",
 diff --git a/include/hw/arm/sn0w_cpu.h b/include/hw/arm/sn0w_cpu.h
 new file mode 100644
 index 0000000..8f5d928

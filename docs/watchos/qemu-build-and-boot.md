@@ -77,33 +77,32 @@ status in its [README](../../tools/opwwe231/watchos/qemu/README.md)) works the c
    override their own encodings). **Done:** the kernel now runs deep into early
    boot — it sets PAN and performs per-CPU PPL lookups keyed on `MPIDR_EL1 & 0xff`.
 
-### Current blocker: `"No cpus found!"` panic (DT cpu-topology)
+### Resolved: `"No cpus found!"` (DeviceTree cpu filter)
 
-The `TPIDR_EL1 == 0` Data Abort above is a **symptom, not the root**. Tracing the
-call chain with the QEMU gdbstub (`-S -gdb tcp::1234` + lldb) shows the function
-at `0x…07824328` is `panic_trap_to_debugger` — its caller `0x…08b1af1c` is
-`panic()`, invoked with the format string **`"No cpus found!"`** (REA
-`ev_aa85dcf4`, string at `0x…07287d4d`). So:
+Root-caused with the QEMU gdbstub + REA. The `TPIDR_EL1 == 0` Data Abort was a
+symptom: the function at `0x…07824328` is `panic_trap_to_debugger`, reached from
+`panic("No cpus found!")` (REA `ev_aa85dcf4`). `ml_parse_cpu_topology` (REA
+`ev_189cc62f`) enumerated **zero** CPUs: `DTFindNode("/cpus")` succeeded but the
+child iterator returned none — the flattened `/cpus` node had `child_node_count = 0`
+(confirmed by reading guest memory at the node). The cause: the fork's DeviceTree
+filter `macho_dtb_node_process` (`hw/arm/xnu.c`) **removes any node whose
+`compatible` is not in the `KEEP_COMP[]` whitelist**, and that list has
+`apple,twister/thunder/lightning` (A9/A13) but not **`apple,tempest`** (the S5
+core). So both `cpu0`/`cpu1` (compatible `apple,tempest`) were stripped. Fix:
+whitelist `apple,tempest` in `KEEP_COMP`. Result: the 2.4 M-trap death spiral is
+gone and the kernel runs far past cpu-topology into early per-CPU / pmap init.
 
-```
-ml_parse_cpu_topology() finds no usable CPU
-  -> panic("No cpus found!")            0xfffffff008b1af1c
-  -> panic_trap_to_debugger()           0xfffffff007824328
-       mrs x8, tpidr_el1  (== 0, per-CPU data not set up this early)
-       ldr x8, [x8, 0x4a0]  -> Data Abort, FAR 0x4a0
-  -> exception entry runs with invalid SP, zeros its own text, loops on udf #0
-```
+### Current blocker: a single `0xe7ffdeff` trap at `0x…078241b0`
 
-The kernel **cannot enumerate any CPU from the DeviceTree**. It is not a CPU-count
-issue: `-smp 2` (the S5's two cores) gives the identical panic. On real hardware
-iBoot fixes up the `/cpus` nodes (their `state`, `cpu-id`, enable/topology) before
-handing the DeviceTree to the kernel; QEMU has no iBoot, and the `t8030` machine
-only rewrites non-CPU nodes (pram/vram/voltage-states) — it creates the A13 CPUs
-from the `/cpus` children and *removes* any beyond `smp.cpus`, but does not write
-the runtime cpu properties the watchOS `ml_parse_cpu_topology` requires. **Next
-step:** decompile `ml_parse_cpu_topology` to learn exactly which properties/state
-it checks, inspect our real `DeviceTree.n146bap` `/cpus` nodes, and have the
-machine populate them (iBoot's job) for the two Tempest cores.
+The kernel now takes exactly **one** Undefined Instruction (ESR EC 0), at
+`0x…078241b0` = the word `0xe7ffdeff` (a clang "unreachable" trap, only 4 in the
+whole kernel), placed right after `bl 0x…078241f8`. So a routine the compiler
+treats as noreturn **returned**, and control fell into the trap. The call sites
+are deep per-CPU init (all `tpidr_el1 -> [+0x4a0] -> [+0x68] -> [...]`); `0x…078241f8`
+ends in a PAC-authenticated indirect call. Next step: identify `0x…0782419c`
+(the function that hits the trap) and `0x…078241f8` (the presumed-noreturn callee)
+and why it returns — likely another early-init expectation we do not yet satisfy.
+Console is still silent because this is all upstream of `serial_init`.
 
 ### How to diagnose a boot crash
 

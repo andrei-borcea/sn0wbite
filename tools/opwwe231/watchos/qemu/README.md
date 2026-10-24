@@ -34,13 +34,14 @@ README for the porting guide.
   (`msr s3_4_c15_c2_1` at `0xfffffff008b44010`, REA `ev_a791894f…`) is gone; the
   kernel now runs deep into early boot (sets PAN, performs per-CPU PPL lookups
   keyed on `MPIDR_EL1 & 0xff`).
-- **Next blocker (root cause found)**: the kernel panics **`"No cpus found!"`**
-  (REA `ev_aa85dcf4`) — `ml_parse_cpu_topology` enumerates no CPU from the
-  DeviceTree. The panic path (`panic` `0x…08b1af1c` -> `panic_trap_to_debugger`
-  `0x…07824328`) then reads `tpidr_el1` (still 0 this early), faults
-  (`ldr [tpidr_el1+0x4a0]`, FAR 0x4a0), and the exception entry corrupts its own
-  text and loops on `udf #0`. Not a count issue (`-smp 2` is identical). The
-  machine must fix up the `/cpus` node runtime properties (iBoot's job on real
-  hardware) for the two Tempest cores — the next session's task.
+- **`"No cpus found!"` fixed**: the DT filter `macho_dtb_node_process` removed the
+  `apple,tempest` `/cpus` nodes because that compatible was missing from
+  `KEEP_COMP` (REA `ev_aa85dcf4`/`ev_189cc62f`). Whitelisting `apple,tempest`
+  clears the 2.4 M-trap death spiral; the kernel now runs far into early
+  per-CPU/pmap init.
+- **Next blocker**: a single `0xe7ffdeff` "unreachable" trap at `0x…078241b0`,
+  right after a `bl` to a presumed-noreturn routine that returned. Deep in early
+  per-CPU init, still upstream of `serial_init` (console silent). Identify
+  `0x…0782419c` / `0x…078241f8` next.
 
 Apply: `cd qemu-t8030 && git apply <this>/t8006-adaptation.patch` then rebuild.
