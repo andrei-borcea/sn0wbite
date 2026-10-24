@@ -97,9 +97,17 @@ registers (`S3_4_C15_C0_4` APCTL, `S3_4_C15_C1_0/1`, `S3_4_C15_C2_0/1`). This va
 page-table bootstrap we reverse-engineered: given a correct `boot_args`, the watchOS kernel's early boot runs on a non-Apple core
 once those 16 sites are neutralized.
 
-Past MMU-enable the kernel's own page tables take over; continuing the emulation needs those tables aligned to the harness memory
-and then the DeviceTree and platform (AIC/PMGR/timer) models -- the next milestone, and the point where an Apple-machine QEMU fork
-(`qemu-t8030` / Aleph `xnu-qemu-arm64`, both iOS-13-era references) becomes the better host.
+Result (stage 2, `--continue`): keeping Unicorn flat (the harness NOPs the `msr sctlr_el1` MMU-enable, so with slide 0 the kernel's
+virtual addresses equal the mapped memory), pre-patching the PAC instructions in the executable segments to NOP/stripped branches
+(55,280 sites -- the port's PAC patch, applied in-memory), loading the real Apple DeviceTree at `deviceTreeP`, and stubbing the
+remaining ~24 Apple IMPDEF registers, the kernel runs **~6 million instructions** of the C boot path: past the arm64e pointer-rebase
+loop (the kernelcache re-signing its own pointers) and into successive early-init loops. Each new stop is the next thing to
+provide. The technique (PAC-strip + Apple-register stub + flat identity memory + real DeviceTree) is exactly the native port's
+patch set, validated to run deep into boot in emulation.
+
+The remaining frontier is the platform: once the kernel reaches for AIC/PMGR/timer MMIO and the SEP/ANS coprocessors, those need
+device models. That is the point where an Apple-machine QEMU fork (`qemu-t8030` / Aleph `xnu-qemu-arm64`, both iOS-13-era
+references) becomes the better host to adapt toward T8006, using the same boot_args and DeviceTree this harness validated.
 
 ## Tools and next steps
 
