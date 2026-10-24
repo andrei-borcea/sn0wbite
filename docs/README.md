@@ -35,6 +35,7 @@ custom recovery menu and a live verbose boot screen.
 | watchOS boot chain mapped to the kernel entry contract | [Boot chain reconstruction](./watchos/boot-chain-reconstruction.md) | REA evidence IDs in the note |
 | Platform device map (the QEMU machine spec) | [T8006 device map](./watchos/platform-device-map.md) | [device map evidence](../research/opwwe231/2026-10-24-watchos-boot/t8006-platform-device-map.txt) |
 | Step-by-step port plan toward the UI | [Boot-chain port plan](./watchos/boot-chain-port-plan.md) | [PAC/register census](../research/opwwe231/2026-10-24-watchos-boot/pac-and-register-census.txt) |
+| Build the QEMU fork and boot the kernelcache | [QEMU build & boot](./watchos/qemu-build-and-boot.md) | the kernelcache loads and the patchfinder runs |
 
 Read the [public evidence collections](../research/README.md) for file provenance and hashes, and the
 [publication policy](./evidence-policy.md) for what we retain, remove or release.

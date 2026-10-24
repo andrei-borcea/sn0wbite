@@ -24,8 +24,8 @@ Two emulation vehicles, by what they provide:
 | 1 | Reset vector → MMU enable → ~6 M instructions of the C boot path (PAC-strip + Apple-reg stub + flat memory + real DeviceTree) | Unicorn | **done** ([harness](../../tools/opwwe231/watchos/emu/boot_harness.py)) |
 | 1b | Full patch/census scope: 331,911 PAC sites, 82 Apple IMPDEF registers | — | **done** ([tools/port](../../tools/opwwe231/watchos/port/)) |
 | 2a | Reference fork acquired and its XNU loader / CPU / patchfinder / device models mapped to T8006 | QEMU | **done** (below) |
-| 2b | Create a **T8006 machine**: CPU, `arm-io`, AIC, aic-timebase, PMGR, uart0; load the kernelcache with our `boot_args` + DeviceTree | QEMU | planned |
-| 2c | Reach **kernel console output** over uart0 (the first big visible milestone) | QEMU | planned |
+| 2b | **QEMU fork built** (7.1.0, t8030 machine); **our watchOS kernelcache loads and the patchfinder runs** on it with our DeviceTree -- see [build & boot](./qemu-build-and-boot.md) | QEMU | **in progress** |
+| 2c | Kernel console output: route the watch's `dockchannel-uart` to stdio (the kernel runs but prints to a channel we do not surface yet) | QEMU | next |
 | 2d | Stub the coprocessor mailboxes (SEP/ANS/AOP/RTP/SMC/SIO) so boot does not hang; model ANS enough to read the rootfs | QEMU | planned |
 | 2e | VM/pmap/scheduler come up → **launchd** starts (userland reached) | QEMU | planned |
 | 3a | Root filesystem: our OTA is an update delta; reconstruct or obtain a full Watch5,4 rootfs + the `arm64_32` dyld shared cache | — | open risk |
