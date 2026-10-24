@@ -1,0 +1,38 @@
+# OPWWE231 A.192: the OPLUS power key handler inside system_server (services.jar, classes2.dex), decompiled with REA's JADX provider.
+# Only the methods that explain the stock power menu are included. The dex was pulled from /system/framework/services.jar and wrapped in a
+# minimal APK (svc2.apk, sha256 d2fd3910b957a02fd7a4d642e7288d9efb7b00933a58daa5cbea9999c21004aa) because REA's Android tools take an APK.
+# REA evidence IDs: class search ev_c9bb032553c8371a274baa983e8e16c6acbfe405fe0ab2deeefa23bf9d3d1e6f, class inventory ev_f3eee1a6962709c317098641d29832551c9b53d7c7f70e2a81526effb88b643a,
+# longPressKeyEvent ev_b8a045f44ae308aace91b3b70af7feb0d0a5cd2e18ce1df6b3278fe149080080, interceptKeyBeforeQueueing ev_6841633110733ea695a15ed6e772add4566b331a5a573c6de446007a091448c0.
+# Reading: the KEYCODE_POWER (26) press schedules mLongPressRunnable at a fixed 3000 ms and mLongPressNotifyRebootRunnable at 6700 ms; no setting
+# changes them. The key release removes the pending runnable (cancelPendingShortcutKeyAction), which is how the power menu replacement cancels it.
+
+// com.android.server.policy.ShortcutKeyCtrl.longPressKeyEvent  (ev_b8a045f44ae308aace91b3b70af7feb0d0a5cd2e18ce1df6b3278fe149080080)
+    public final void longPressKeyEvent(int i) {
+        this.mHandler.postDelayed(this.mLongPressRunnable, 3000L);
+        this.mHandler.postDelayed(this.mLongPressNotifyRebootRunnable, 6700L);
+    }
+
+// com.android.server.policy.ShortcutKeyCtrl.interceptKeyBeforeQueueing, the KEYCODE_POWER branch start  (ev_6841633110733ea695a15ed6e772add4566b331a5a573c6de446007a091448c0)
+if (keyCode == 26) {
+            if (z3) {
+                long jElapsedRealtime = SystemClock.elapsedRealtime();
+                Log.d("ShortcutKeyCtrl", "now - mLastScreenOnTime = " + (jElapsedRealtime - this.mLastScreenOnTime) + "  now - mPreSosLastClickTime = " + (jElapsedRealtime - this.mPreSosLastClickTime) + "  mInitialScreenOffCountDown = " + this.mInitialScreenOffCountDown);
+                int i2 = this.mInitialScreenOffCountDown;
+                if (i2 == 0 && (jElapsedRealtime - this.mLastScreenOnTime < 300 || jElapsedRealtime - this.mPreSosLastClickTime < 300)) {
+                    this.mPreSos = true;
+                    this.mPreSosLastClickTime = jElapsedRealtime;
+                    int i3 = i2 + 1;
+                    this.mInitialScreenOffCountDown = i3;
+                    if (i3 == 1) {
+                        this.mHandler.postDelayed(this.mSecondClickRunnable, 300L);
+                    }
+                } else if (i2 > 0 && (jElapsedRealtime - this.mLastScreenOnTime < 500 || jElapsedRealtime - this.mPreSosLastClickTime < 500)) {
+                    this.mPreSos = true;
+                    this.mPreSosLastClickTime = jElapsedRealtime;
+                    this.mInitialScreenOffCountDown = i2 + 1;
+                    Log.d("ShortcutKeyCtrl", "mInitialScreenOffCountDown = " + this.mInitialScreenOffCountDown);
+                    int i4 = this.mInitialScreenOffCountDown;
+                    if (i4 == 2) {
+
+# Log lines from the watch that match (logcat, 24 October 2026): `ShortcutKeyCtrl: long press start` 3.0 s after `intercept_power: [ACTION_DOWN`,
+# then `WearGlobalActions` takes focus; `cancelPendingShortcutKeyAction when screen on, interval:3031,down:false,up:true` at the release.

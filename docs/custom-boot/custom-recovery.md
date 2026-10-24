@@ -32,6 +32,7 @@ the stock recovery binary in the same image, so the menu can hand over to it.
 | Display, both buttons, WEAR OS exit, FASTBOOT exit | Verified on the watch ([flight recorder](../../research/opwwe231/2026-10-24-custom-boot/recovery-flight-recorder-hardware-runs.txt)) |
 | DUAL BOOT list loaded from the image | Verified on the watch with V9B (`1 target(s)`) |
 | Payload run, in-flight marker, idle exit, watchdog cases, payload output, battery rule | Simulated on the watch with `--sim` ([regression](../../research/opwwe231/2026-10-24-custom-boot/recovery-simulation-regression.txt)) |
+| Entering it from the running watch (power menu, then Recovery) and surviving Android boots | Verified on the watch: the partition hash is unchanged after a boot |
 | INFO page, SPEGNI (`shutdown,`), RECOVERY STOCK, hard reset inside the menu, watchdog firing for real | Not recorded on hardware yet |
 
 ## How it works
@@ -75,7 +76,7 @@ meanwhile are dropped; stdout and stderr go to the window and the first 30 lines
 | Probes looped back into recovery after every reboot | The BCB `boot-recovery` stays until zeroed | Zero it first and before every exit |
 | `SETCRTC` always `EINVAL` | Bootloader splash still owns the pipeline | Close and reopen the DRM device |
 | The targets file was missing on the watch | The kernel's initramfs unpacker does not create parent directories, so a cpio entry listed before its directory is dropped | Every added entry must follow its parent directory. The packer and verifier check it |
-| A custom recovery disappears after one Android boot | `vendor_flash_recovery` rebuilds the stock recovery when its SHA-1 differs | Flash right before entering. From fastboot, `fastboot reboot recovery` keeps the image |
+| A custom recovery disappears after one Android boot | `vendor_flash_recovery` runs `/vendor/bin/install-recovery.sh`, which rebuilds the stock recovery from `boot` when the partition's SHA-1 differs | The `sn0wbite_powermenu` module overrides that script with a no-op. Without the module, flash right before entering; from fastboot, `fastboot reboot recovery` keeps the image |
 | `adb shell` and `adb pull` of `/tmp` fail in recovery | Stock policy | Use the flight recorder; `adb reboot [bootloader]` still works |
 | A bogus "attempt failed" notice on the first V9 start | Old builds used the same `misc` offset and magic for a binary struct | The marker now needs a printable label |
 
@@ -99,9 +100,8 @@ The menu logic can be tested without flashing: `src/test_sim9.sh` runs it in `--
 
 ## Limits and open work
 
-- A custom recovery lasts until the next Android boot. Making it permanent means neutralizing `install-recovery.sh`.
+- With the `sn0wbite_powermenu` module the custom recovery is permanent: the module turns the stock rebuild into a no-op. Without it, Android restores the stock recovery at the next boot. Restoring stock means removing the module and flashing your own dump with `restore_stock_recovery.sh`.
 - There is no payload yet. Candidates are an image in a spare partition loaded from Android.
 - The stock recovery entry starts it with no arguments (the "No command" screen); the effect of its `--bootmenu` option is
   not analysed.
-- A menu on the running watch that replaces the stock power button behaviour is planned; see
-  [Hardware buttons](../device/hardware-buttons.md).
+- The menu on the running watch that opens this recovery is described in [Hardware buttons](../device/hardware-buttons.md).

@@ -1,0 +1,6 @@
+id=sn0wbite_powermenu
+name=sn0wbite Power Menu
+version=v1.2
+versionCode=3
+author=sn0wbite
+description=Replaces the stock power menu on the OnePlus Watch 2 (hold POWER for Restart, Recovery, Fastboot, Power off) and stops Android from rebuilding the stock recovery at every boot

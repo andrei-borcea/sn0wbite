@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Whitelist for the privileged permissions of the sn0wbite power menu (ro.control_privapp_permissions is enforce on this build:
+     a priv-app that asks for a permission missing here stops the system server). -->
+<permissions>
+    <privapp-permissions package="com.sn0wbite.powermenu">
+        <permission name="android.permission.REBOOT"/>
+        <permission name="android.permission.SHUTDOWN"/>
+        <permission name="android.permission.RECOVERY"/>
+    </privapp-permissions>
+</permissions>

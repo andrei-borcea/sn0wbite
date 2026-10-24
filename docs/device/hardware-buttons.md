@@ -29,13 +29,38 @@ In the recovery menu the button that moves down reports 114 and the one that sel
 The power menu is drawn by `com.oplus.wearable.sysui` (`/system/priv-app/HeyClockworkSysUi/HeyClockworkSysUi.apk`). This build
 has no `com.android.systemui` package.
 
-## Adding Recovery and Fastboot to the running watch
+## The sn0wbite power menu (implemented)
 
-Open work. The stock menu cannot be extended through settings: `power_button_very_long_press` only chooses between nothing and
-global actions. Two routes were identified:
+Hold POWER for 2.5 s and the sn0wbite menu opens instead of the stock one: four tiles, Restart, Recovery, Fastboot and Power off.
+It is the Magisk module `sn0wbite_powermenu` ([release](../../releases/opwwe231/README.md), sources in
+[tools/opwwe231/powermenu](../../tools/opwwe231/powermenu/)). Verified on the watch.
 
-1. A small root app with a menu (Recovery, Fastboot, Restart, Power off), bound to a gesture through the shortcut settings above.
-   It needs the Android SDK build tools to compile, which are not installed on the build machine, and Magisk `su` granted to
-   the app through the policy database, because Magisk's prompt does not render usably on this display.
-2. Patching `HeyClockworkSysUi.apk` so global actions opens our menu. This replaces the stock behaviour completely but a mistake
-   leaves the watch without its interface.
+How it works:
+
+- **The app is a priv-app with no root.** The module puts the APK in `/system/priv-app/Sn0wPowerMenu/` and a whitelist,
+  `privapp-permissions-sn0wbite-powermenu.xml`, in `/system/etc/permissions/`. The app holds `REBOOT`, `RECOVERY` and `SHUTDOWN`
+  (all `signature|privileged`), so `PowerManager.reboot(...)` and the shutdown intent work without `su`. This build has
+  `ro.control_privapp_permissions=enforce`: a privileged permission missing from the whitelist stops the system server, so the
+  whitelist must match the manifest exactly.
+- **The stock menu is not controlled by the AOSP setting.** `power_button_very_long_press=0` makes `PhoneWindowManager` report
+  `VERY_LONG_PRESS_POWER_NOTHING`, and the stock menu still opens. The OPLUS `ShortcutKeyCtrl` in `services.jar`
+  (found and decompiled with REA, [excerpt](../../research/opwwe231/2026-10-24-custom-boot/shortcutkeyctrl-power-long-press-excerpt.txt))
+  schedules `mLongPressRunnable` at a fixed 3000 ms after the POWER press, and the key release cancels it.
+- **The watcher replaces it.** `powerkey` (static ARM32, started by the module's `service.sh`) reads the `qpnp_pon` device. At 2.5 s
+  it starts the menu and injects the key release itself, so the 3 s timer is cancelled before it fires; the release also counts
+  as a short press (screen off), so the watcher wakes the screen and shows the menu again. The module also sets the AOSP setting
+  to `0` so the framework's own path stays off.
+- **Recovery now lands in our recovery.** The module also overrides `/vendor/bin/install-recovery.sh` with a no-op, so Android
+  stops rebuilding the stock recovery at every boot (see [Custom recovery](../custom-boot/custom-recovery.md)).
+
+Things that cost time:
+
+- Magisk's `--sqlite` policy write (granting root to the app) is what we avoided; the priv-app route needs no grant.
+- After changing a priv-app inside a module, delete `/data/system/package_cache` and reboot: the package manager reuses its scan
+  of `/system/priv-app` because an overlay does not change the directory time.
+- The installer hook `set_permissions` did not leave the binary executable; `service.sh` runs `chmod 755` itself.
+- d8 8.2 crashed with a null pointer on a small activity that captured a `null` string in an anonymous class; the app uses
+  named classes and empty strings instead.
+- The stock `WearGlobalActions` window is drawn by `com.oplus.wearable.sysui`; patching that APK was not needed.
+
+To get the stock menu back, remove the module and run `settings delete global power_button_very_long_press`.

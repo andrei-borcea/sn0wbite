@@ -14,5 +14,6 @@ Narrative and design: [Custom recovery](../../../docs/custom-boot/custom-recover
 | [libbootanimation-features.txt](./libbootanimation-features.txt) | What the stock boot animation player can draw, from its strings (REA evidence ID inside) |
 | [live-boot-console-excerpts.txt](./live-boot-console-excerpts.txt) | The red/green in-place frame test, player log lines, boot timeline and the first real boot with the console |
 | [power-button-policy-excerpt.txt](./power-button-policy-excerpt.txt) | Framework policy for POWER and the crown, the shortcut settings, and the SysUI package |
+| [shortcutkeyctrl-power-long-press-excerpt.txt](./shortcutkeyctrl-power-long-press-excerpt.txt) | The OPLUS power key handler in `services.jar`: the fixed 3000 ms timer that opens the stock power menu, decompiled with REA |
 | [provenance.json](./provenance.json) | Where each file comes from |
 | [SHA256SUMS](./SHA256SUMS) | SHA-256 digests for this collection |

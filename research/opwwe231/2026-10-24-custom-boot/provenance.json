@@ -9,7 +9,8 @@
   },
   "other_evidence": {
     "power-button-policy-excerpt.txt": "Selected lines from dumpsys window policy and settings list, captured in-session over adb.",
-    "live-boot-console-excerpts.txt": "Selected logcat, dmesg and screencap observations captured in-session; the red/green frame test centre pixels were decoded from screencap -p output."
+    "live-boot-console-excerpts.txt": "Selected logcat, dmesg and screencap observations captured in-session; the red/green frame test centre pixels were decoded from screencap -p output.",
+    "shortcutkeyctrl-power-long-press-excerpt.txt": "Decompiled Java of two methods of com.android.server.policy.ShortcutKeyCtrl (services.jar classes2.dex), produced by REA inspect-android-method (JADX headless 0.7.1); logcat lines captured in-session."
   },
   "excluded_by_policy": [
     "partition and ramdisk contents",

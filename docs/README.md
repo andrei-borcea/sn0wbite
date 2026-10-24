@@ -14,7 +14,7 @@ custom recovery menu and a live verbose boot screen.
 | Installed update and companion app | [OTA and OHealth](./device/ota-and-ohealth.md) | [Recovery excerpts](../research/opwwe231/2026-10-20-a192/recovery-update-excerpts.txt), [findings JSON](../research/opwwe231/2026-10-20-a192/ota-and-ohealth.json) |
 | Brick recovery (stock recovery, fastboot, EDL) | [Recovery research](./device/recovery.md) | Local bootloader observations and linked public reports |
 | Root, Magisk and boot customization | [Root and boot customization](./device/root-and-boot-customization.md) | [21 October collection](../research/opwwe231/2026-10-21-root-magisk/README.md) |
-| Buttons, input devices, the power menu | [Hardware buttons](./device/hardware-buttons.md) | [Policy excerpt](../research/opwwe231/2026-10-24-custom-boot/power-button-policy-excerpt.txt) |
+| Buttons, input devices, the replacement power menu | [Hardware buttons](./device/hardware-buttons.md) | [Policy excerpt](../research/opwwe231/2026-10-24-custom-boot/power-button-policy-excerpt.txt), [ShortcutKeyCtrl excerpt](../research/opwwe231/2026-10-24-custom-boot/shortcutkeyctrl-power-long-press-excerpt.txt) |
 
 ## Custom boot chain
 

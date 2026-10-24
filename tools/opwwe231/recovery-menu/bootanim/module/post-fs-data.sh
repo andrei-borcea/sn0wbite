@@ -1,6 +1,7 @@
 #!/system/bin/sh
 MODDIR=${0%/*}
 TARGET=/system/media/bootanimation/bootanimation-plus.zip
+chmod 755 "$MODDIR/bin/bootlog" # the installer hook does not always leave it executable
 stop bootanim
 mount --bind "$MODDIR/system/media/bootanimation.zip" "$TARGET"
 # live verbose console: bootlog rewrites frames of that zip while the animation plays (see tools/recovery-menu/bootanim/bootlog.c).

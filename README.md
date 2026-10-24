@@ -13,7 +13,7 @@ peripherals come later. We have not implemented a loader or demonstrated a
 watchOS boot; native compatibility remains unproven.
 
 To get there we built the tooling the watch did not have, and we publish it: a **custom recovery with a boot menu** (Wear OS,
-dual boot slot, stock recovery, fastboot), a **live verbose boot screen**, a Magisk-patched `init_boot` and a
+dual boot slot, stock recovery, fastboot), a **live verbose boot screen**, a **replacement power menu**, a Magisk-patched `init_boot` and a
 [checksummed set of release images](./releases/opwwe231/README.md) for this device.
 
 ## Current findings
@@ -30,7 +30,8 @@ Research snapshot: **20 October 2026**, updated **24 October 2026**.
 | Restoration | **Verified**: a documented, checksummed restore path exists for this exact device, demonstrated live during a real recovery |
 | Custom recovery | **Running on the watch**: menu with Wear OS, dual boot, stock recovery, fastboot, info and power off; watchdog, flight recorder and a payload runner. No second OS boots yet. [Custom recovery](./docs/custom-boot/custom-recovery.md) |
 | Boot screen | **Installed**: the kernel log scrolls live under a small logo during Wear OS boot, by rewriting frames inside the animation zip while the stock player plays them. [Boot screen](./docs/custom-boot/boot-screen.md) |
-| Releases | Magisk-patched `init_boot`, recovery image and boot screen module, with SHA-256 sums: [releases/opwwe231](./releases/opwwe231/README.md) |
+| Power menu | **Installed**: holding POWER opens our menu (Restart, Recovery, Fastboot, Power off) instead of the stock one, as a priv-app with no root. The module also keeps the custom recovery from being overwritten. [Hardware buttons](./docs/device/hardware-buttons.md) |
+| Releases | Magisk-patched `init_boot`, recovery image, boot screen and power menu modules, with SHA-256 sums: [releases/opwwe231](./releases/opwwe231/README.md) |
 | Apple reference | watchOS **6.3.1 / 17U224**, OTA for **Watch5,4 / N146bAP** |
 
 Recovery logs show an **A.190 → A.192** update that patched `init_boot` and updated
@@ -55,7 +56,7 @@ device's split-GKI, 32-bit-only platform along the way. See
 | Root, Magisk and boot customization | [Root and boot customization](./docs/device/root-and-boot-customization.md) |
 | Custom recovery and boot menu, dual boot slot | [Custom recovery](./docs/custom-boot/custom-recovery.md) |
 | Live verbose boot screen | [Boot screen](./docs/custom-boot/boot-screen.md) |
-| Hardware buttons, input devices and the power menu | [Hardware buttons](./docs/device/hardware-buttons.md) |
+| Hardware buttons, input devices, the replacement power menu | [Hardware buttons](./docs/device/hardware-buttons.md) |
 | Apple package identity and feasibility | [watchOS reference](./docs/watchos/watchos-reference.md) |
 | Captured output and machine-readable findings | [20 October](./research/opwwe231/2026-10-20-a192/README.md), [21 October](./research/opwwe231/2026-10-21-root-magisk/README.md) and [24 October](./research/opwwe231/2026-10-24-custom-boot/README.md) collections |
 | Privacy, redactions and provenance | [Evidence publication policy](./docs/evidence-policy.md) |
@@ -79,7 +80,7 @@ docs/
 research/          Reviewed evidence organized by device and collection
 tools/
   ota/             OPPO/HeyTap OTA API client reconstructed from OHealth
-  opwwe231/        Boot-chain tools: recovery menu, boot screen, Magisk patch helper
+  opwwe231/        Boot-chain tools: recovery menu, boot screen, power menu, Magisk patch helper
 releases/opwwe231/ Built images and module with SHA-256 sums
 backups/           Private local acquisitions; ignored by Git
 ```
@@ -95,7 +96,7 @@ backups/           Private local acquisitions; ignored by Git
 - [x] Build a custom recovery with a boot menu, watchdog, flight recorder and dual boot slot. *(running on the watch; payload runner tested in simulation)*
 - [x] Show live boot diagnostics on screen during Wear OS boot. *(kernel log under the logo)*
 - [x] Publish the modified images, tools and findings. *([releases](./releases/opwwe231/README.md))*
-- [ ] Replace the stock power menu with one that offers Recovery and Fastboot on the running watch. *([notes](./docs/device/hardware-buttons.md))*
+- [x] Replace the stock power menu with one that offers Recovery and Fastboot on the running watch. *([how](./docs/device/hardware-buttons.md))*
 - [ ] Analyze watchOS boot stages, kernel format and Apple hardware dependencies. *(started: [boot and ISA analysis](./docs/watchos/watchos-boot-and-isa-analysis.md))*
 - [ ] Establish controlled payload execution and diagnostic output on the watch.
 - [ ] Demonstrate repeatable watchOS kernel execution with traces and reproduction steps.
