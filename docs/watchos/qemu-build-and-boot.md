@@ -147,6 +147,24 @@ by the IOPlatformExpert). Per "patch now, clean later", `t8030_patch_kernel` now
 no-ops the resolver (`movz w0,#1; ret`) to get past the NULL-deref -- interrupts are
 not routed by this.
 
+**Why phase-1 skips the AIC (resolved by re-decompile):** phase-1 adds a controller
+to the resolver arrays only if, walking the `AAPL,phandle` property's attached-object
+list (`prop->method_0x38()` then `->next`), one entry is **`&gIOPlatform`**
+(`DAT_…08c12620`). That attachment is created by **`registerInterruptController`**,
+which the controller's **driver** (`AppleInterruptController`) calls when it starts,
+or the platform expert calls for the primary controller (the AIC is the only IC with
+no `interrupt-parent`; it is marked `IOPrimaryInterruptController`). Our minimal boot
+runs no IOKit driver matching and no platform-expert primary registration, so
+`gIOPlatform` is never attached to phandle `0x10` → phase-1 skips the AIC. The DT
+itself is correct (the `/arm-io/aic` node has `#interrupt-cells` + `AAPL,phandle=0x10`
++ `interrupt-controller`). **Consequence for the clean fix:** registering the AIC for
+real means running the interrupt-controller driver/registration path, not just
+force-adding the bare DT node (a driverless node would have none of the controller
+methods the resolver and device drivers call). That is a deep IOKit subsystem, so the
+practical route is to first identify exactly what the later bootstrap thread blocks on
+(which needs a rebuilt symbol map — the kernelcache is stripped, `nsyms = 0`) and then
+satisfy that specific wait.
+
 ### pmap PPL/xPRR consistency check (APRR) — RESOLVED
 
 Past the resolver no-op, boot hit `panic("%s: modifying a PPL mapping pte_p=%p
