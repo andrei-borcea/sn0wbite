@@ -7,89 +7,85 @@
 # wired only the virtual one, so the timer FIQ was never delivered; minimal machine (coprocessors
 # skipped, nvram optional, 4 GB DRAM kept -- do NOT shrink); DT timebase + load-time seed of
 # gPEClockFrequencyInfo; KEEP_COMP += apple,tempest; tolerant no-op of the IODeviceTree interrupt
-# resolver.
+# resolver (now DISABLED, see below).
 #
-# Console (this revision): model the Apple DockChannel UART -- the watchOS S5 serial console, not the
-# Samsung uart0 (t8030.c t8030_create_dockchannel; XNU 6153 pexpert dockchannel.h/pe_serial.c reg
-# layout: WDATA1 TX +0x4004, WSTAT free-space +0x4014, RX regs empty). Its register windows sit INSIDE
-# the broad pmgr placeholder range, so map them at priority 1 (add_subregion_overlap) to shadow it;
-# DockChannel takes serial_hd(0) and the Samsung UARTs shift to serial_hd(i+1); xnu.c KEEPS the
-# dockchannel-uart DT node (was being stripped). Set /chosen debug-enabled = 1 (t8030.c): a
-# production-fused unit leaves it 0, which makes PE_i_can_has_debugger() false and SUPPRESSES the
-# serial console + kprintf -- the gate that kept early boot silent.
+# Console (prior revision): model the Apple DockChannel UART -- the watchOS S5 serial console, not
+# the Samsung uart0 (XNU 6153 pexpert dockchannel.h/pe_serial.c reg layout: WDATA1 TX +0x4004,
+# WSTAT free-space +0x4014, RX regs empty). Its register windows sit INSIDE the broad pmgr
+# placeholder range, so map them at priority 1 (add_subregion_overlap) to shadow it; DockChannel
+# takes serial_hd(0), the Samsung UARTs shift to serial_hd(i+1); xnu.c KEEPS the dockchannel-uart
+# DT node. Set /chosen debug-enabled = 1: a production-fused unit leaves it 0, which makes
+# PE_i_can_has_debugger() false and SUPPRESSES the serial console + kprintf -- the gate that kept
+# early boot silent.
 #
-# Boot status: early-asm -> pmap -> PPL -> VM init -> scheduler starts; CPU0 runs the idle loop
-# healthily (physical-timer FIQ wakes it from WFI). CPU1 stays at its reset vector (the kernel never
-# writes the PMGR cpu-start reg), but -smp 1 stalls identically, so CPU1 is NOT the blocker. DECISIVE
-# finding this revision: the kernel performs ZERO arm-io MMIO of any kind (no PMGR, no AIC, no serial
-# read or write) -- the bootstrap thread is blocked BEFORE IOKit device matching, so the deferred
-# serial console never attaches and no device is ever touched. Next blocker = find what the bootstrap
-# thread waits on in early kernel_bootstrap (post sched_init, pre IOKit); console remains deferred
-# until then even with the DockChannel model + debug-enabled in place.
+# BREAKTHROUGH (prior revision): the fork's DT filter in xnu.c macho_dtb_node_process removes any
+# node whose `compatible` is not in KEEP_COMP[] -- the list had `arm-io,s8000`/`arm-io,t8030` but
+# NOT `arm-io,t8006`, so the ENTIRE /arm-io subtree (AIC, PMGR, DockChannel console node,
+# coprocessors) was stripped from the kernel's DT -> gIODTPHandles empty -> IODeviceTree interrupt
+# resolver NULL-dereffed on CPUs' interrupt-parent phandle 0x10 (AIC) -> no console, no interrupts.
+# Fix: xnu.c KEEP_COMP += arm-io,t8006 + pmgr1,t8006 + gpio,t8006 + i2c,t8006 + wdt,t8006 +
+# aic,t8006 + dockchannel,t8002 + dockchannel-uart + mcc,t8006 + error-handler,t8006. T8030_AIC:
+# pad aic ipid-mask from 52->56 bytes (apple_aic_create rounds numEIR up to 14 ->
+# AppleInterruptControllerV1.cpp:128 "length is 52 but should be 56"); AIC registers (_aicVersion=2
+# _aicNumExtInts=0x1c0=448 _aicNumIPIs=4).
 #
-# Coprocessor/device bring-up (OPTION 3, in progress): the plateau is an IOKit
-# matching + Power-Management deadlock -- drivers block (waitForService / PM
-# registration) waiting for provider services that never publish because the
-# coprocessors/devices were skipped. Re-enabling them, adapting each to the
-# T8006 DT (node names differ from iOS/t8030). Re-enabled so far: SPMI (T8006
-# node "spmi", iOS had spmi0..2) and SMC (iop,ascwrap-v2 RTBuddy coprocessor;
-# T8006 "smc" matches the t8030 path, region-base 0x23fe00000 ==
-# T8030_SMC_TEXT_BASE). Also fixed the RTBuddy protocol version: it was keyed on
-# the build-version MAJOR with only iOS cases (13/14/15/16); watchOS reports
-# MAJOR 6/7/8 so it stayed 0 and the SMC/ANS/SIO mailbox handshake would break
-# -- added watchOS 6->10, 7->11, 8/9->12. Both build clean, NO regression, but
-# neither shifts the plateau: empirically the boot stalls UPSTREAM of the
-# coprocessor drivers (they never start).
+# Driver bring-up (prior revision): the IOKit interrupt resolver no-op is REMOVED -- with /arm-io
+# kept and the AIC registered, real IODeviceTree interrupt resolution works. ApplePMGR::initDriver
+# is bypassed by marking all 14 PMGR bridges optional (optional-bridge-mask=0x3fff).
+# AppleStockholmControl (NFC) dropped via REM_NAMES. dockchannel-uart gets channel-number=0 so the
+# IOKit AppleDockChannel kext doesn't panic "Invalid channel-number".
 #
-# AIC root cause (confirmed via r2/pdg + disasm of the controller-add
-# 0x7d2ac10): IODeviceTreeAlloc builds the IORegistry and creates the
-# interrupt-resolver arrays (0x8c796a8 phandles / 0x8c796b0 controllers) but
-# adds a controller ONLY IF, walking a node's AAPL,phandle attached-object list,
-# an entry == gIOPlatform (attached by registerInterruptController). The primary
-# AIC (phandle 0x10) never gets gIOPlatform attached -> never added -> the
-# resolver finds no controller (hence the tolerant no-op). gdbstub confirms the
-# add at 0x7d2ac10 NEVER fires, and zero AIC MMIO = the AppleInterruptController
-# driver never starts. Registering the primary AIC is the next step.
+# THIS REVISION -- full driver stack up, kernel reaches "Waiting on IOMedia Partition ID=0x1":
 #
-# *** BREAKTHROUGH (this revision): console works + AIC registers; core deadlock broken. ***
-# ROOT CAUSE of the whole blind-hang/IOKit-deadlock saga: the DT filter stripped the
-# entire /arm-io subtree because "arm-io,t8006" was not in KEEP_COMP (only s8000/t8030
-# variants were). The kernel's DT thus had NO arm-io devices -> no AIC, no DockChannel
-# console node -> gIODTPHandles empty -> the IODeviceTree interrupt resolver NULL-dereffed
-# on the CPUs' interrupt-parent phandle 0x10. FIX 1 (xnu.c): add the T8006/T8002
-# compatibles to KEEP_COMP (arm-io,t8006 + pmgr1/gpio/i2c/wdt/aic,t8006, dockchannel,t8002,
-# dockchannel-uart, mcc/error-handler,t8006) so /arm-io and its children survive. Result:
-# the DockChannel serial console now produces output (we can SEE the boot/panic log), and
-# the boot reaches AppleInterruptController::start. FIX 2 (t8030.c t8030_create_aic): pad
-# the aic node's ipid-mask from 52 to 56 bytes -- apple_aic_create rounds numEIR up to an
-# even 14 ((len/4+1)&~1), so the modelled AIC advertises 14 EIRs/448 IRQs via rAIC_INFO and
-# AppleInterruptController::start demands numEIR*4 = 56 bytes ("length is 52 but should be
-# 56"). Result: the AIC driver starts and registers (_aicVersion=2, _aicNumExtInts=0x1c0,
-# _aicNumIPIs=4) -- the interrupt-controller deadlock that blocked every prior session is
-# BROKEN. Boot now runs through corecrypto/FIPS, AppleCredentialManager, Image4,
-# AppleT8006IO::start (chip-rev B1), the AIC, and stops at the NEXT blocker:
-# ApplePMGR::initDriver (ApplePMGR.cpp:860 "REQUIRE failed: _optionalBridges & (0x1 << i)")
-# -- a T8006 PMGR bridge-config mismatch (24 pmgr reg bridges; a required one is absent).
-# The resolver no-op is kept (phase-2 DT interrupt resolution still crashed on phandle 0x4f
-# aop-gpio with it off; revisit once all interrupt-controller phandles register). Debug is
-# now fast via the live console.
+# [1] arm-io unimplemented catch-all. The T8006 SoC exposes many peripherals we do not model
+#     (GPIOIC, extra dockchannel register blocks, misc clock/power blocks, ...). Every unmodelled
+#     register access took a synchronous external abort (ESR DFSC 0x10) and killed the driver.
+#     Map one lowest-priority (-1000) unimplemented device over the entire arm-io window
+#     (create_unimplemented_device("arm-io-unimpl", soc_base_pa, soc_size)) so unknown reads return
+#     0, writes are ignored. Real device models at priority 0 shadow this catch-all for their exact
+#     sub-ranges, so each future per-device model automatically overrides it with no change here.
+#     This single change unblocked AppleT8006GPIOIC, MemCacheController tunables, PlatformErrorHandler,
+#     AES, I2C, RTBuddy(RTP) and the keystore stack in one go.
 #
-# Driver bring-up (this revision, after the console/AIC breakthrough): the IOKit
-# interrupt resolver no-op is now REMOVED -- with /arm-io kept and the AIC
-# registered, real IODeviceTree interrupt resolution works (the no-op had
-# starved interrupt-driven drivers, e.g. AppleSamsungSerial crashed on a NULL
-# interrupt at 0x7d6346c). ApplePMGR::initDriver is bypassed by marking all 14
-# PMGR bridges optional (optional-bridge-mask=0x3fff). AppleStockholmControl
-# (NFC leaf, absent HW) is dropped via REM_NAMES "stockholm". The console node
-# dockchannel-uart is given channel-number=0 so the IOKit AppleDockChannel
-# driver (which also matches it by device_type) doesn't panic "Invalid
-# channel-number". Boot now runs through corecrypto/FIPS, AppleT8006IO (chip-rev
-# B1), I2C i2c1/i2c3, the AIC, AppleSSE, AppleT8006PlatformErrorHandler and
-# AppleARMLightEmUp, stopping at ApplePMGRMTRSensor::agingPerfStateTVMRegister
-# (ApplePMGR.cpp:107 "perfStateNb > 0") -- a PMGR thermal/perf-state sensor
-# extra (next: skip or feed perf-state data). Strategy: skip non-essential
-# sensors/peripheral drivers now (closed kexts + absent HW), re-enable later.
+# [2] ApplePMGR MTR perf-state registration (closed kext, DT-shaped assert). ApplePMGR-527.100.13
+#     dispatches per-RegMap at 0xFFFFFFF00868AD70 (bounds-checks w1 < 0xA); only the w1 == 2 branch
+#     registers the MTR aging/voltage/tvm sub-regions, which panic
+#     (ApplePMGRMTRSensor.cpp:107/108/142 "perfStateNb / _perfStateRegionRegisters.nb > 0") because
+#     the mtr_N DT props and backing region data are absent on this adapted DT. We cannot ret the
+#     whole dispatcher (it serves the other RegMaps too) and ret-ing each sub-method is
+#     whack-a-mole, so reroute ONLY the w1 == 2 case to the dispatcher's OWN "nothing registered"
+#     exit (0x868AEAC: str xzr,[slot]; mov w0,#0; retab) -- same result it already returns for
+#     empty/other-RegMap cases. Patch at 0x868ADC0: "b.ne 0x868AEAC" -> "b 0x868AEAC".
 #
+# [3] AppleDockChannel::start cleanly skipped. The IOKit AppleDockChannel kext (diags/rtp/bulk
+#     channels, NOT the console path) maps six register blocks (global, dock-agent-AP, device
+#     config/data, dock config/data); our QEMU dockchannel model only backs the UART sub-window used
+#     by the low-level pexpert console. Its first MMIO read on an unmodelled block took an external
+#     abort; make its start() return 0 ("mov w0,#0; ret" at 0xFFFFFFF00881529C) and IOKit detaches it
+#     without touching the working console.
+#
+# [4] pmgr_reg[] OUT-OF-BOUNDS R/W fixed (real memory-safety bug in the fork). The T8006 pmgr
+#     reg[0] window is 0x180000 bytes, but T8030MachineState.pmgr_reg was a FIXED uint8_t[0x100000].
+#     The MemoryRegion was sized to reg[0] (0x180000), so pmgr_reg_read/write did
+#     `memcpy(tms->pmgr_reg + addr, ...)` with NO bounds check, silently reading/writing
+#     ADJACENT HOST STRUCT MEMORY for every guest access past 0x100000. ApplePMGR CPM's PS register
+#     at 0x100040 therefore returned 0xf6404000 (next struct field), nibble 0 -> _setPSLevel panic
+#     "MANUAL_PS=0 for CPM" (ApplePMGR.cpp:4421). Fixed by sizing pmgr_reg[] to 0x180000 and adding
+#     a defence-in-depth bounds-check in the ops (returns 0 / drops on OOB).
+#
+# Boot status with this revision: full IOKit init runs to the end. corecrypto/FIPS PASSED ->
+# CoreAnalyticsHub -> Image4 -> AppleT8006IO (B1) -> AppleInterruptController (AIC) ->
+# AppleT8006GPIOIC -> AppleT8006MemCacheController + tunables -> AppleT8006PlatformErrorHandler
+# (SEP_FUSE, AMCC/AMCX/CP/DT0/CCU0 maps) -> AppleS8000AES v3 -> AppleARMLightEmUp ->
+# AppleS5L8940XI2CController i2c1/i2c3 -> RTBuddy(RTP) -> AppleKeyStore + AppleSEPKeyStore
+# (_sep_enabled=1) -> AppleCredentialManager -> AppleSSE -> MemCacheController::start finished ->
+# AppleMobileApNonce (timeout AES, expected, no HW) -> AppleARMPE::getGMTTimeOfDay (no RTC,
+# expected) -> apfs_module_start v1412.100.68 -> AppleFSCompressionTypeZlib ->
+# IOSurfaceRoot::installMemoryRegions() -> "Waiting on IOMedia Partition ID=0x1". The kernel is now
+# idle waiting on the root block device -- the OTA bundle doesn't carry a mountable rootfs, so this
+# is the expected quiesce point. Next milestone: supply a rootfs (ramdisk or synth image), reach
+# launchd / userland.
+
 diff --git a/hw/arm/apple_a13.c b/hw/arm/apple_a13.c
 index d304c75..7d172bd 100644
 --- a/hw/arm/apple_a13.c
@@ -166,120 +162,8 @@ index 452a377..dda350c 100644
      'apple_a13_gxf.c',
      'apple_a9.c',
      'apple_sep.c',
-diff --git a/hw/arm/sn0w_cpu.c b/hw/arm/sn0w_cpu.c
-new file mode 100644
-index 0000000..2cc4d2c
---- /dev/null
-+++ b/hw/arm/sn0w_cpu.c
-@@ -0,0 +1,106 @@
-+/*
-+ * sn0w CPU compat layer -- IMPDEF system-register neutralization.
-+ *
-+ * Part of the sn0wbite watchOS boot-chain port. See README.md.
-+ */
-+#include "qemu/osdep.h"
-+#include "hw/arm/sn0w_cpu.h"
-+#include "target/arm/cpregs.h"
-+
-+void sn0w_cpu_neutralize_impdef(ARMCPU *cpu,
-+                                const Sn0wImpdefSpace *spaces, int n_spaces)
-+{
-+    int i, opc1;
-+
-+    for (i = 0; i < n_spaces; i++) {
-+        /*
-+         * CRm and opc2 can be wildcarded (CP_ANY), but opc1 cannot: QEMU derives
-+         * the architectural min-EL / permission mask from opc1 *before* it
-+         * expands the wildcard, so CP_ANY there trips a g_assert_not_reached().
-+         * Enumerate opc1 0..7 and emit one blanket entry per value.
-+         *
-+         * ARM_CP_CONST   = reads return resetvalue (0), writes ignored (RAZ/WI).
-+         * ARM_CP_OVERRIDE = a later, specific definition of any encoding inside
-+         *                   this space replaces the blanket one, so a CPU model
-+         *                   can still implement individual registers for real.
-+         * PL1_RW is within the permission mask of every opc1 value, so the same
-+         * access setting is valid for all of them.
-+         */
-+        for (opc1 = 0; opc1 <= 7; opc1++) {
-+            ARMCPRegInfo ri = {
-+                .name = "SN0W_IMPDEF_RAZWI",
-+                .cp = CP_REG_ARM64_SYSREG_CP,
-+                .opc0 = spaces[i].op0,
-+                .opc1 = opc1,
-+                .crn = spaces[i].crn,
-+                .crm = CP_ANY,
-+                .opc2 = CP_ANY,
-+                .state = ARM_CP_STATE_AA64,
-+                .access = PL1_RW,
-+                .type = ARM_CP_CONST | ARM_CP_OVERRIDE,
-+                .resetvalue = 0,
-+            };
-+            define_one_arm_cp_reg(cpu, &ri);
-+        }
-+    }
-+}
-+
-+void sn0w_cpu_neutralize_apple_impdef(ARMCPU *cpu)
-+{
-+    static const Sn0wImpdefSpace apple_impdef[] = {
-+        { .op0 = 3, .crn = 15 },
-+    };
-+    sn0w_cpu_neutralize_impdef(cpu, apple_impdef, ARRAY_SIZE(apple_impdef));
-+}
-+
-+void sn0w_cpu_install_apple_aprr(ARMCPU *cpu)
-+{
-+    /*
-+     * APRR_EL0 (S3_4_C15_C2_0) and APRR_EL1 (S3_4_C15_C2_1): the Apple
-+     * A11..A13 / S4-S5 "Access Protection Remap Registers", two 16-entry x
-+     * 4-bit permission-index tables. The A13 QEMU core models only the
-+     * A14-style SPRR encodings (opc1=6); the Tempest/S5 kernel instead programs
-+     * these APRR registers (opc1=4), so this core must model the pair.
-+     *
-+     * They are REAL read/write state (backed by env->sprr.aprr_el[]), not
-+     * constants -- the kernel both writes and reads them back:
-+     *   - pmap protection updates re-read them and panic ("modifying a PPL
-+     *     mapping" / "creating an xPRR mapping") unless they hold the arch
-+     *     defaults APRR_EL0 = 0x4545010167670101, APRR_EL1 = 0x4455445566666677.
-+     *   - the PPL call gate, on entry, writes APRR_EL1 = 0x4455405566666677
-+     *     (the default with the index-10 nibble toggled to make PPL pages
-+     *     writable), ISB, then reads it back and panics "ppl_dispatch: failed
-+     *     due to bad arguments/state" unless the readback matches; it restores
-+     *     the default on exit. A write-ignored constant fails that readback --
-+     *     which is why these must be R/W, not ARM_CP_CONST.
-+     * The default and the PPL-mode value differ only at APRR index 10, which the
-+     * pmap check exempts (its allowed-index mask is 0x440 = bits 6 and 10), so a
-+     * single R/W register satisfies both the pmap check and the PPL gate. SPRR-
-+     * based MMU remapping is never enabled on this core, so the PTE AP/XN/PXN
-+     * bits keep their architectural meaning regardless. resetvalue seeds the
-+     * defaults for any reader that runs before the kernel's first write;
-+     * ARM_CP_OVERRIDE lets these replace the blanket RAZ/WI for their encodings.
-+     */
-+    ARMCPRegInfo aprr_el0 = {
-+        .name = "APRR_EL0",
-+        .cp = CP_REG_ARM64_SYSREG_CP,
-+        .opc0 = 3, .opc1 = 4, .crn = 15, .crm = 2, .opc2 = 0,
-+        .state = ARM_CP_STATE_AA64,
-+        .access = PL1_RW,
-+        .type = ARM_CP_OVERRIDE,
-+        .resetvalue = 0x4545010167670101ULL,
-+        .fieldoffset = offsetof(CPUARMState, sprr.aprr_el[0]),
-+    };
-+    ARMCPRegInfo aprr_el1 = {
-+        .name = "APRR_EL1",
-+        .cp = CP_REG_ARM64_SYSREG_CP,
-+        .opc0 = 3, .opc1 = 4, .crn = 15, .crm = 2, .opc2 = 1,
-+        .state = ARM_CP_STATE_AA64,
-+        .access = PL1_RW,
-+        .type = ARM_CP_OVERRIDE,
-+        .resetvalue = 0x4455445566666677ULL,
-+        .fieldoffset = offsetof(CPUARMState, sprr.aprr_el[1]),
-+    };
-+    define_one_arm_cp_reg(cpu, &aprr_el0);
-+    define_one_arm_cp_reg(cpu, &aprr_el1);
-+}
 diff --git a/hw/arm/t8030.c b/hw/arm/t8030.c
-index fd0ce37..95431c9 100644
+index fd0ce37..40e933f 100644
 --- a/hw/arm/t8030.c
 +++ b/hw/arm/t8030.c
 @@ -38,6 +38,7 @@
@@ -427,7 +311,7 @@ index fd0ce37..95431c9 100644
  static void t8030_create_s3c_uart(const T8030MachineState *tms, uint32_t port,
                                    Chardev *chr)
  {
-@@ -174,6 +298,38 @@ static void t8030_patch_kernel(struct mach_header_64 *hdr)
+@@ -174,6 +298,75 @@ static void t8030_patch_kernel(struct mach_header_64 *hdr)
  {
      //disable_kprintf_output = 0
      // *(uint32_t *)vtop_static(0xFFFFFFF0077142C8) = 0;
@@ -463,10 +347,47 @@ index fd0ce37..95431c9 100644
 +    /* *(uint32_t *)vtop_static(0xFFFFFFF007D2B5B4) = 0x52800020; */
 +    /* *(uint32_t *)vtop_static(0xFFFFFFF007D2B5B8) = 0xd65f03c0; */
 +
++    /* sn0w (bring-up, "skip extras"): skip the ApplePMGRMTRSensor perf-state
++     * REGISTRATION for the MTR RegMap. The registrar at 0xFFFFFFF00868AD70 is a
++     * per-RegMap dispatcher (bounds-checks w1 < 0xA); only its w1 == 2 branch
++     * registers the MTR aging/voltage/tvm perf-state sub-regions -- a chain of
++     * calls (agingPerfStateTVMRegister 0x86859E4, agingPerfStateVoltageRegister
++     * 0x8685B14, 0x8685ACC, ...), each verified single-caller here. On this adapted
++     * DT the "mtr_N" properties and the backing perf-state region data are absent
++     * (console: "ApplePMGRMTRSensor property mtr_1 missing in devicetree"), so every
++     * one of those methods panics (ApplePMGRMTRSensor.cpp:107/108/142 "perfStateNb /
++     * _perfStateRegionRegisters.nb > 0"). We cannot ret the whole dispatcher (it
++     * serves the other RegMaps too), and ret-ing each method is whack-a-mole, so
++     * reroute ONLY the w1 == 2 case to the dispatcher's own "nothing registered"
++     * exit (0x868AEAC: str xzr,[slot]; mov w0,#0; retab) -- the same result it
++     * already returns for the empty/other-RegMap cases. Patch the branch at
++     * 0x868ADC0 "b.ne 0x868AEAC" (taken when w1 != 2) into an unconditional
++     * "b 0x868AEAC", so w1 == 2 takes it as well. No MTR telemetry is registered;
++     * the caller already tolerates the null/0 result.
++     * TODO: synthesise the mtr_N DT nodes + perf-state region data (closed-kext
++     * format) to register for real; until then this is the intended "skip extras"
++     * bring-up patch. */
++    *(uint32_t *)vtop_static(0xFFFFFFF00868ADC0) = 0x1400003b; /* b 0x868AEAC */
++
++    /* sn0w (bring-up, "skip extras"): AppleDockChannel::start (entry
++     * 0xFFFFFFF00881529C) maps and pokes six dockchannel register blocks (global,
++     * dock-agent-AP, device config/data, dock config/data). Our QEMU dockchannel
++     * model only backs the UART sub-window used by the low-level pexpert serial
++     * console (the path that prints this very log); the other blocks aren't decoded,
++     * so the driver's first MMIO read ([base+4] at 0x88156A4) takes an external
++     * abort (ESR DFSC 0x10), and it also rejects the node's channel-number. The
++     * IOKit AppleDockChannel kext (diags/rtp/bulk channels) is NOT the console path
++     * and is not needed for bring-up, so make its start() fail cleanly -- "mov w0,#0
++     * ; ret" -- and IOKit detaches it without touching the working console.
++     * TODO: model the full dockchannel register map (or only the channels we need)
++     * and re-enable; until then this is an intended "skip extras" bring-up patch. */
++    *(uint32_t *)vtop_static(0xFFFFFFF00881529C) = 0x52800000; /* mov w0, #0 */
++    *(uint32_t *)vtop_static(0xFFFFFFF0088152A0) = RET_INST;   /* ret        */
++
      kpf();
  }
  
-@@ -480,9 +636,14 @@ static void t8030_memory_setup(MachineState *machine)
+@@ -480,9 +673,14 @@ static void t8030_memory_setup(MachineState *machine)
  
      nvram = APPLE_NVRAM(qdev_find_recursive(sysbus_get_default(), "nvram"));
      if (!nvram) {
@@ -484,7 +405,7 @@ index fd0ce37..95431c9 100644
      apple_nvram_load(nvram);
  
      fprintf(stderr, "boot_mode: %u\n", tms->boot_mode);
-@@ -521,6 +682,7 @@ static void t8030_memory_setup(MachineState *machine)
+@@ -521,6 +719,7 @@ static void t8030_memory_setup(MachineState *machine)
      if (apple_nvram_serialize(nvram, info->nvram_data, sizeof(info->nvram_data)) < 0) {
          error_report("%s: Failed to read NVRAM", __func__);
      }
@@ -492,7 +413,7 @@ index fd0ce37..95431c9 100644
  
      if (tms->ticket_filename) {
          if (!g_file_get_contents(tms->ticket_filename, &info->ticket_data, (gsize *)&info->ticket_length, NULL)) {
-@@ -561,6 +723,21 @@ static void t8030_memory_setup(MachineState *machine)
+@@ -561,6 +760,21 @@ static void t8030_memory_setup(MachineState *machine)
          tms->panic_size = panic_size;
      }
  
@@ -514,7 +435,54 @@ index fd0ce37..95431c9 100644
      DTBNode *vram = find_dtb_node(tms->device_tree, "vram");
      if (vram) {
          uint64_t vram_reg[2] = { 0 };
-@@ -725,6 +902,14 @@ static void t8030_cpu_setup(MachineState *machine)
+@@ -624,19 +838,27 @@ static void pmgr_reg_write(void *opaque, hwaddr addr, uint64_t data, unsigned si
+     if (addr >= 0x80000 && addr <= 0x8c000) {
+         value = (value & 0xf) << 4 | (value & 0xf);
+     }
+-    // fprintf(stderr, "PMGR reg WRITE @ 0x" TARGET_FMT_lx " value: 0x" TARGET_FMT_lx "\n", addr, data);
+     switch (addr) {
+     case 0xd4004:
+         t8030_start_cpus(machine, data);
+         return;
+     }
++    /* sn0w: bounds-check (defence in depth) -- see pmgr_reg[] comment in
++     * t8030.h. The MemoryRegion is sized to the DT's reg[0] length and the
++     * buffer is now sized to match, so this should never fire; keep the clamp
++     * so a future SoC with a bigger pmgr window can't silently OOB again. */
++    if (addr + size > sizeof(tms->pmgr_reg)) {
++        qemu_log_mask(LOG_GUEST_ERROR,
++                      "sn0w pmgr_reg_write: OOB @0x%" HWADDR_PRIx " sz %u (buf 0x%zx) dropped\n",
++                      addr, size, sizeof(tms->pmgr_reg));
++        return;
++    }
+     memcpy(tms->pmgr_reg + addr, &value, size);
+ }
+ 
+ static uint64_t pmgr_reg_read(void *opaque, hwaddr addr, unsigned size)
+ {
+     T8030MachineState *tms = T8030_MACHINE(opaque);
+-    // fprintf(stderr, "PMGR reg READ @ 0x" TARGET_FMT_lx "\n", addr);
+     uint64_t result = 0;
+     switch(addr) {
+     case 0xf0010: /* AppleT8030PMGR::commonSramCheck */
+@@ -644,6 +866,16 @@ static uint64_t pmgr_reg_read(void *opaque, hwaddr addr, unsigned size)
+     default:
+         break;
+     }
++    /* sn0w: bounds-check (defence in depth) -- see pmgr_reg[] comment in
++     * t8030.h. Previously this read past the buffer into adjacent host state
++     * (e.g. 0x100040 -> next struct field = 0xf6404000, nibble 0 -> ApplePMGR
++     * MANUAL_PS=0 panic). */
++    if (addr + size > sizeof(tms->pmgr_reg)) {
++        qemu_log_mask(LOG_GUEST_ERROR,
++                      "sn0w pmgr_reg_read: OOB @0x%" HWADDR_PRIx " sz %u (buf 0x%zx) -> 0\n",
++                      addr, size, sizeof(tms->pmgr_reg));
++        return 0;
++    }
+     memcpy(&result, tms->pmgr_reg + addr, size);
+     return result;
+ }
+@@ -725,6 +957,14 @@ static void t8030_cpu_setup(MachineState *machine)
              continue;
          }
  
@@ -529,7 +497,7 @@ index fd0ce37..95431c9 100644
          tms->cpus[i] = apple_a13_cpu_create(node);
          cluster_id = tms->cpus[i]->cluster_id;
  
-@@ -752,6 +937,23 @@ static void t8030_create_aic(MachineState *machine)
+@@ -752,6 +992,23 @@ static void t8030_create_aic(MachineState *machine)
      timebase = find_dtb_node(soc, "aic-timebase");
      assert(timebase);
  
@@ -553,7 +521,7 @@ index fd0ce37..95431c9 100644
      tms->aic = apple_aic_create(machine->smp.cpus, child, timebase);
      object_property_add_child(OBJECT(machine), "aic", OBJECT(tms->aic));
      assert(tms->aic);
-@@ -787,6 +989,24 @@ static void t8030_pmgr_setup(MachineState* machine)
+@@ -787,6 +1044,24 @@ static void t8030_pmgr_setup(MachineState* machine)
      child = find_dtb_node(child, "pmgr");
      assert(child != NULL);
  
@@ -578,7 +546,7 @@ index fd0ce37..95431c9 100644
      prop = find_dtb_prop(child, "reg");
      assert(prop);
  
-@@ -1682,6 +1902,21 @@ static void t8030_machine_init(MachineState *machine)
+@@ -1682,6 +1957,21 @@ static void t8030_machine_init(MachineState *machine)
  
      if (tms->rtbuddyv2_protocol_version == 0) {
          switch (BUILD_VERSION_MAJOR(build_version)) {
@@ -600,7 +568,7 @@ index fd0ce37..95431c9 100644
              case 13:
                  tms->rtbuddyv2_protocol_version = 10;
                  break;
-@@ -1712,6 +1947,15 @@ static void t8030_machine_init(MachineState *machine)
+@@ -1712,6 +2002,15 @@ static void t8030_machine_init(MachineState *machine)
                                                  &tms->bootinfo.trustcache_size);
      data = 24000000;
      set_dtb_prop(tms->device_tree, "clock-frequency", 4, &data);
@@ -616,7 +584,34 @@ index fd0ce37..95431c9 100644
      child = find_dtb_node(tms->device_tree, "arm-io");
      assert(child != NULL);
  
-@@ -1773,49 +2017,59 @@ static void t8030_machine_init(MachineState *machine)
+@@ -1729,6 +2028,26 @@ static void t8030_machine_init(MachineState *machine)
+     tms->soc_base_pa = ranges[1];
+     tms->soc_size = ranges[2];
+ 
++    /*
++     * sn0w T8006 (bring-up): catch-all for the arm-io MMIO aperture. The T8006
++     * SoC exposes many peripherals we don't model yet (GPIO interrupt controller,
++     * extra dockchannel register blocks, misc power/clock blocks, ...). On real
++     * HW every register in [soc_base_pa, soc_base_pa+soc_size) decodes to some
++     * device; in our minimal machine the unmodelled ones have no MemoryRegion, so
++     * the first MMIO access takes a synchronous external abort (ESR DFSC 0x10) and
++     * the driver dies (e.g. AppleT8006GPIOIC::start reading gpioic_base[0]).
++     *
++     * Map a single lowest-priority (-1000) unimplemented device over the whole
++     * arm-io window so an access to any not-yet-modelled block reads as zero and
++     * ignores writes instead of aborting. Every real device is added to sysmem at
++     * the default priority (0) and therefore shadows this catch-all for its exact
++     * sub-range -- so modelling a peripheral later automatically overrides the
++     * stub, with no change here. This converts a whole class of fatal aborts into
++     * inspectable "feature absent" reads and is the modular base the per-device
++     * models build on. TODO: replace coverage with real models block by block.
++     */
++    create_unimplemented_device("arm-io-unimpl", tms->soc_base_pa, tms->soc_size);
++
+     memset(buffer, 0, sizeof(buffer));
+     memcpy(buffer, "MWL72", 5);
+     set_dtb_prop(tms->device_tree, "model-number", 32, buffer);
+@@ -1773,49 +2092,59 @@ static void t8030_machine_init(MachineState *machine)
  
      t8030_create_aic(machine);
  
@@ -746,67 +741,24 @@ index 2ca4983..cc78a2b 100644
      "dotara\0$", "baseband-spmi\0$", "stockholm-spmi\0$",
      "dart-aop\0$", "dart-pmp\0$", "dart-sep\0$", "dart-rsm\0$",
      "dart-scaler\0$", "dart-jpeg0\0$", "dart-jpeg1\0$",
-diff --git a/include/hw/arm/sn0w_cpu.h b/include/hw/arm/sn0w_cpu.h
-new file mode 100644
-index 0000000..d5dbc6d
---- /dev/null
-+++ b/include/hw/arm/sn0w_cpu.h
-@@ -0,0 +1,55 @@
-+/*
-+ * sn0w CPU compat layer -- public interface.
-+ *
-+ * Part of the sn0wbite watchOS boot-chain port. See README.md in this
-+ * directory for the "mount your own CPU" porting guide.
-+ */
-+#ifndef HW_ARM_SN0W_CPU_H
-+#define HW_ARM_SN0W_CPU_H
-+
-+#include "cpu.h"
-+
-+/*
-+ * An implementation-defined (IMPDEF) AArch64 system-register space, named by
-+ * its fixed (op0, CRn) pair. Every (opc1, CRm, opc2) encoding inside the pair
-+ * is considered part of the space.
-+ *
-+ *   Apple cores (Cyclone .. Firestorm, incl. the S4/S5 watch SoCs) put their
-+ *   HID/EHID/ACC/CTRR/PMC/IPI/... registers at op0=3, CRn=15.
-+ */
-+typedef struct Sn0wImpdefSpace {
-+    int op0;
-+    int crn;
-+} Sn0wImpdefSpace;
-+
-+/*
-+ * Absorb every encoding in each declared IMPDEF space as RAZ/WI (read-as-zero,
-+ * write-ignore) instead of letting it raise an Undefined Instruction trap.
-+ *
-+ * This lets a QEMU core execute a kernel built for a different CPU, which pokes
-+ * dozens of vendor registers this core never heard of, without wiring every one
-+ * of them by hand. Registers the core *does* model for real are declared as
-+ * usual with define_arm_cp_regs() AFTER this call: they transparently override
-+ * the blanket entry for their own encoding (QEMU keeps the last definition, and
-+ * the blanket entry carries ARM_CP_OVERRIDE so the real one is allowed to win).
-+ *
-+ * Call order therefore matters: neutralize first, then your real table.
-+ */
-+void sn0w_cpu_neutralize_impdef(ARMCPU *cpu,
-+                                const Sn0wImpdefSpace *spaces, int n_spaces);
-+
-+/* Convenience preset for the Apple IMPDEF space (op0=3, CRn=15). */
-+void sn0w_cpu_neutralize_apple_impdef(ARMCPU *cpu);
-+
-+/*
-+ * Install the Apple APRR permission-remap registers APRR_EL0 (S3_4_C15_C2_0)
-+ * and APRR_EL1 (S3_4_C15_C2_1) holding their architectural defaults, so an
-+ * APRR-era kernel (A11..A13 / S4-S5 watch SoCs) that re-reads and verifies
-+ * them does not panic. The A13 QEMU core only models the A14-style SPRR
-+ * encodings (opc1=6); this supplies the older APRR pair (opc1=4) the Tempest
-+ * kernel programs. Call AFTER sn0w_cpu_neutralize_apple_impdef() so these
-+ * override the blanket RAZ/WI for their two encodings.
-+ */
-+void sn0w_cpu_install_apple_aprr(ARMCPU *cpu);
-+
-+#endif /* HW_ARM_SN0W_CPU_H */
+diff --git a/include/hw/arm/t8030.h b/include/hw/arm/t8030.h
+index a1b4427..b2fc2bf 100644
+--- a/include/hw/arm/t8030.h
++++ b/include/hw/arm/t8030.h
+@@ -80,7 +80,12 @@ typedef struct
+     Notifier init_done_notifier;
+     hwaddr panic_base;
+     hwaddr panic_size;
+-    uint8_t pmgr_reg[0x100000];
++    /* sn0w T8006: the pmgr node's reg[0] is 0x180000 bytes on T8006 (vs 0x100000
++     * on the original t8030 port); the previous 0x100000 buffer silently
++     * underflowed by 512 KiB and every guest MMIO access past 0x100000 landed in
++     * the next struct field (OOB R/W of host state). Sized to the real reg[0]
++     * length; pmgr_reg_read/write bounds-check anyway. */
++    uint8_t pmgr_reg[0x180000];
+     MemoryRegion amcc;
+     uint8_t amcc_reg[0x100000];
+     bool kaslr_off;
 diff --git a/target/arm/cpu.h b/target/arm/cpu.h
 index a259770..da2939c 100644
 --- a/target/arm/cpu.h

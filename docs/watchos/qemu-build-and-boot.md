@@ -32,7 +32,40 @@ qemu-system-aarch64 -M t8030,trustcache-filename=$O/Firmware/018-09700-014.dmg.t
 
 `-kernel` takes the raw IM4P kernelcache (QEMU unwraps IM4P + lzfse); `-dtb` takes the raw IM4P DeviceTree (payload type `dtre`).
 
-## Result (24 October 2026)
+## Result (25 October 2026) — full IOKit up, waits on IOMedia
+
+The kernelcache now boots through the full driver stack and quiesces on the
+root block device. Tail of the console (headers only):
+
+```
+AppleT8006IO::start: chip-revision: B1
+AppleInterruptController::start: _aicVersion = 2 _aicNumExtInts = 0x1c0 _aicNumIPIs = 4
+AppleT8006GPIOIC::start: ...
+AppleT8006MemCacheController::start: ... (+ tunables stream) ... finished
+AppleT8006PlatformErrorHandler::start: SEP_FUSE_CFG map ... AMCC / AMCX / CP / DT0 / CCU0
+AppleS8000AES::start: aes-version: 3
+AppleARMLightEmUp::start: starting...
+AppleS5L8940XI2CController::start: i2c1 ... i2c3 ...
+RTBuddy(RTP): start(...)
+AppleKeyStore starting / AppleSEPKeyStore::start: _sep_enabled = 1
+AppleCredentialManager: start: returning, result = true
+AppleSSE::start returning, result = 1
+ERROR: AppleMobileApNonce::start: Timeout waiting for AES accelerator service   (expected, no HW)
+ERROR: AppleARMPE::getGMTTimeOfDay: RTC did not show up                         (expected, no HW)
+apfs_module_start:1689: load: com.apple.filesystems.apfs, v1412.100.68
+com.apple.AppleFSCompressionTypeZlib kmod start
+IOSurfaceRoot::installMemoryRegions()
+Waiting on <dict ...><string>IOMedia</string>...<integer>0x1</integer>...</dict>
+```
+
+The kernel is **idle on the root-block-device matching dictionary** — the
+expected quiesce point: the OTA bundle does not carry a mountable rootfs. See
+[Phase 2c](#phase-2c-adapting-the-machine--cpu-to-t8006-in-progress) below for
+the full chain of fixes that got us here.
+
+Next milestone: supply a rootfs (ramdisk or synth image), reach launchd / userland.
+
+## Earlier result (24 October 2026)
 
 ```
 Loading watchOS 6.3...
@@ -45,10 +78,10 @@ kpf_amfi_callback: Found AMFI (Routine)
 KPF: Found AppleKeyStoreUserClient::handleUserClientCommandGated
 ```
 
-So **our watchOS kernelcache loads into QEMU, the kernel patchfinder runs on it** (finding and patching AMFI, the trust cache,
-`mac_mount` -- the code-signing bypasses), and the machine initializes from our DeviceTree. The CPU then runs with no unhandled
-instructions and no guest errors -- but no kernel console text appears yet. Two patterns (`amfi_sha1`, `trustcache16`) do not match
-because this is watchOS 6.3.1, not iOS 14; they are AMFI/trust-cache (userland) patches, not fatal to early boot.
+At that point our watchOS kernelcache loaded into QEMU and the kernel patchfinder ran on it (finding and patching AMFI, the trust
+cache, `mac_mount` -- the code-signing bypasses), but no kernel console text appeared yet. Two patterns (`amfi_sha1`,
+`trustcache16`) do not match because this is watchOS 6.3.1, not iOS 14; they are AMFI/trust-cache (userland) patches, not fatal to
+early boot.
 
 ## Phase 2c: adapting the machine + CPU to T8006 (in progress)
 
