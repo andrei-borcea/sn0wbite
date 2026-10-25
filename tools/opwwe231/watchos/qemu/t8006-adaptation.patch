@@ -1,12 +1,10 @@
-# sn0wbite T8006 adaptation of the qemu-t8030 fork.
-# Apply on a clean qemu-t8030 checkout:  cd qemu-t8030 && git apply <this>  then build
-# (see docs/watchos/qemu-build-and-boot.md). Run with -smp 2 (the S5's two cores).
-# Covers: (1) apple_a13.c CPU node optional for Tempest(S5); (2) sn0w CPU layer sn0w_cpu.{c,h}
-# + hook -> RAZ/WI Apple IMPDEF (op0=3,CRn=15); (3) t8030.c minimal machine (coprocessors
-# skipped, nvram optional, DT timebase-frequency, and a single load-time seed of
-# gPEClockFrequencyInfo.timebase_frequency_hz = 24 MHz so the early timebase consumers do not
-# panic); (4) xnu.c KEEP_COMP whitelist apple,tempest. Boot now advances through cpu-topology
-# + timebase into IOKit/platform-expert init (next blocker: NULL vcall-result deref 0x…07d2b9dc).
+# sn0wbite T8006 adaptation of the qemu-t8030 fork. Apply: cd qemu-t8030 && git apply <this>; build;
+# run with -smp 2. See docs/watchos/qemu-build-and-boot.md. Covers: A13 CPU node optional for
+# Tempest(S5); sn0w CPU layer sn0w_cpu.{c,h} RAZ/WI Apple IMPDEF(op0=3,CRn=15); minimal machine
+# (coprocessors skipped, nvram optional); DT timebase-frequency + load-time seed of
+# gPEClockFrequencyInfo.timebase_frequency_hz=24MHz; KEEP_COMP += apple,tempest; and a bring-up
+# tolerant no-op of the IODeviceTree interrupt resolver (0x7d2b5b4) (AIC not registered; clean
+# fix pending). Boot reaches cpu-topology->timebase->IOKit(bypassed)->a PPL pmap panic.
 #
 diff --git a/hw/arm/apple_a13.c b/hw/arm/apple_a13.c
 index d304c75..864061d 100644
@@ -124,10 +122,10 @@ index 0000000..ab23f36
 +    sn0w_cpu_neutralize_impdef(cpu, apple_impdef, ARRAY_SIZE(apple_impdef));
 +}
 diff --git a/hw/arm/t8030.c b/hw/arm/t8030.c
-index fd0ce37..85603cc 100644
+index fd0ce37..c4a45fe 100644
 --- a/hw/arm/t8030.c
 +++ b/hw/arm/t8030.c
-@@ -174,6 +174,19 @@ static void t8030_patch_kernel(struct mach_header_64 *hdr)
+@@ -174,6 +174,33 @@ static void t8030_patch_kernel(struct mach_header_64 *hdr)
  {
      //disable_kprintf_output = 0
      // *(uint32_t *)vtop_static(0xFFFFFFF0077142C8) = 0;
@@ -144,10 +142,24 @@ index fd0ce37..85603cc 100644
 +     * also carries timebase-frequency = 24 MHz for pe_identify_machine's own use. */
 +    *(uint64_t *)vtop_static(0xFFFFFFF008C14E98) = 24000000;
 +
++    /* sn0w (bring-up, tolerant): the IODeviceTree interrupt resolver
++     * (0xFFFFFFF007D2B5B4) NULL-derefs when no interrupt controller is registered
++     * for a node's interrupt-parent phandle -- IODeviceTreeAlloc's phase-1 never
++     * registers the AIC into its phandle/controller arrays (DAT_8c796a8/b0), so
++     * the arrays are empty and every resolution of phandle 0x10 (AIC) crashes.
++     * Root cause (why phase-1 skips the AIC) is still open; until it is fixed
++     * cleanly, no-op the resolver so it returns 1 ("nothing to resolve") instead
++     * of dereferencing a NULL controller. Interrupts are NOT routed by this, so
++     * expect a later consequence -- this only unblocks to reach the next milestone.
++     *   movz w0, #1  (0x52800020) ; ret (0xd65f03c0)
++     */
++    *(uint32_t *)vtop_static(0xFFFFFFF007D2B5B4) = 0x52800020;
++    *(uint32_t *)vtop_static(0xFFFFFFF007D2B5B8) = 0xd65f03c0;
++
      kpf();
  }
  
-@@ -480,9 +493,14 @@ static void t8030_memory_setup(MachineState *machine)
+@@ -480,9 +507,14 @@ static void t8030_memory_setup(MachineState *machine)
  
      nvram = APPLE_NVRAM(qdev_find_recursive(sysbus_get_default(), "nvram"));
      if (!nvram) {
@@ -165,7 +177,7 @@ index fd0ce37..85603cc 100644
      apple_nvram_load(nvram);
  
      fprintf(stderr, "boot_mode: %u\n", tms->boot_mode);
-@@ -521,6 +539,7 @@ static void t8030_memory_setup(MachineState *machine)
+@@ -521,6 +553,7 @@ static void t8030_memory_setup(MachineState *machine)
      if (apple_nvram_serialize(nvram, info->nvram_data, sizeof(info->nvram_data)) < 0) {
          error_report("%s: Failed to read NVRAM", __func__);
      }
@@ -173,7 +185,7 @@ index fd0ce37..85603cc 100644
  
      if (tms->ticket_filename) {
          if (!g_file_get_contents(tms->ticket_filename, &info->ticket_data, (gsize *)&info->ticket_length, NULL)) {
-@@ -725,6 +744,14 @@ static void t8030_cpu_setup(MachineState *machine)
+@@ -725,6 +758,14 @@ static void t8030_cpu_setup(MachineState *machine)
              continue;
          }
  
@@ -188,7 +200,7 @@ index fd0ce37..85603cc 100644
          tms->cpus[i] = apple_a13_cpu_create(node);
          cluster_id = tms->cpus[i]->cluster_id;
  
-@@ -1712,6 +1739,15 @@ static void t8030_machine_init(MachineState *machine)
+@@ -1712,6 +1753,15 @@ static void t8030_machine_init(MachineState *machine)
                                                  &tms->bootinfo.trustcache_size);
      data = 24000000;
      set_dtb_prop(tms->device_tree, "clock-frequency", 4, &data);
@@ -204,7 +216,7 @@ index fd0ce37..85603cc 100644
      child = find_dtb_node(tms->device_tree, "arm-io");
      assert(child != NULL);
  
-@@ -1780,42 +1816,42 @@ static void t8030_machine_init(MachineState *machine)
+@@ -1780,42 +1830,42 @@ static void t8030_machine_init(MachineState *machine)
      t8030_pmgr_setup(machine);
      t8030_amcc_setup(machine);
  

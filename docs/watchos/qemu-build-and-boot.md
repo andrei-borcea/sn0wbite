@@ -137,6 +137,19 @@ before this resolution; then register it early (platform/DT) or fix the ordering
 Also add the T8006 device compatibles (e.g. `gpio,t8006`) to `KEEP_COMP` as needed,
 in step with modelling/stubbing those devices. Console is still upstream.
 
+**Update (decompiled + bypassed):** the function is `IODeviceTreeAlloc` (`0x…07d2a78c`,
+2-phase: register controllers with `#interrupt-cells`+`AAPL,phandle`, then resolve
+each node's interrupts via `0x…07d2b5b4`); gdbstub shows phase-1 registers **no**
+controller (the add never fires), so the resolver NULL-derefs on the empty arrays
+for the AIC phandle `0x10`. Why phase-1 skips the AIC is still open (DFS reach vs
+the add's inner validity, or the primary controller is meant to be pre-registered
+by the IOPlatformExpert). Per "patch now, clean later", `t8030_patch_kernel` now
+no-ops the resolver (`movz w0,#1; ret`) to get past the NULL-deref -- interrupts are
+not routed by this. **Next blocker reached:** a PPL panic
+`"%s: modifying a PPL mapping pte_p=%p pmap=%p prot=%d options=%u ..."` (`0x…08b22b14`,
+`__PPLTEXT`) -- a pmap/PPL write to a protected PTE, possibly independent or a
+consequence of the unrouted interrupts.
+
 ### How to diagnose a boot crash
 
 `-serial file:con.log -D dbg.log -d int,guest_errors,unimp` gives the exception
