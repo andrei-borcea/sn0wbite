@@ -27,6 +27,16 @@
 # thread waits on in early kernel_bootstrap (post sched_init, pre IOKit); console remains deferred
 # until then even with the DockChannel model + debug-enabled in place.
 #
+# Coprocessor/device bring-up (OPTION 3, in progress): the plateau is an IOKit
+# matching + Power-Management deadlock -- drivers block (waitForService / PM
+# registration) waiting for provider services that never publish because the
+# coprocessors/devices were skipped. Re-enabling them, adapting each to the
+# T8006 DT (node names differ from iOS/t8030). First re-enabled: SPMI, as the
+# T8006 node "spmi" (iOS had spmi0..2); builds clean, boot unchanged (SPMI is
+# not the PM dependency -- the power stack the PM waits on is SMC). Next: SMC
+# (iop,ascwrap-v2 RTBuddy coprocessor) + smc-pmu, then the remaining IOPs/DARTs,
+# then real primary-AIC registration (replacing the resolver no-op).
+#
 diff --git a/hw/arm/apple_a13.c b/hw/arm/apple_a13.c
 index d304c75..7d172bd 100644
 --- a/hw/arm/apple_a13.c
@@ -216,7 +226,7 @@ index 0000000..2cc4d2c
 +    define_one_arm_cp_reg(cpu, &aprr_el1);
 +}
 diff --git a/hw/arm/t8030.c b/hw/arm/t8030.c
-index fd0ce37..8ce3bae 100644
+index fd0ce37..589bb53 100644
 --- a/hw/arm/t8030.c
 +++ b/hw/arm/t8030.c
 @@ -38,6 +38,7 @@
@@ -523,9 +533,9 @@ index fd0ce37..8ce3bae 100644
 -    t8030_create_spmi(machine, "spmi0");
 -    t8030_create_spmi(machine, "spmi1");
 -    t8030_create_spmi(machine, "spmi2");
-+    /* sn0w: skip for minimal T8006 console */ /* t8030_create_spmi(machine, "spmi0"); */
-+    /* sn0w: skip for minimal T8006 console */ /* t8030_create_spmi(machine, "spmi1"); */
-+    /* sn0w: skip for minimal T8006 console */ /* t8030_create_spmi(machine, "spmi2"); */
++    /* sn0w T8006: the SPMI bus node is named "spmi" (iOS/t8030 had spmi0..2).
++     * Re-enabled as the first step of the coprocessor/interrupt bring-up. */
++    t8030_create_spmi(machine, "spmi");
  
 -    t8030_create_pmu(machine, "spmi0", "spmi-pmu");
 +    /* sn0w: skip for minimal T8006 console */ /* t8030_create_pmu(machine, "spmi0", "spmi-pmu"); */
