@@ -332,6 +332,43 @@ primitive (`flag 0x…08bcb550`) that never reaches its condition on the minimal
 machine. **Next:** identify what the bootstrap thread waits on in early
 `kernel_bootstrap` (post `sched_init`, pre IOKit) and supply it.
 
+### REFINED (decisive): the stall is an IOKit matching deadlock on `waitForService`
+
+A `thread_block` tracer over the QEMU gdbstub (lldb breakpoint at
+`thread_block = 0x…07845d18`, manual `x29` frame-chain unwind, symbolicated
+against the rebuilt map) settles the question. The kernel is **not** slow and
+**not** pre-IOKit — it is **in IOKit matching** and deadlocked:
+
+- It boots normally and spins up ~24 kernel threads (`sched_maintenance_thread`,
+  `mapping_replenish`, the `thread_call` pool, VM threads, …) that block/wake
+  via the timer FIQ. After ~145 `thread_block` events the system **plateaus**:
+  zero new call sites appear; only the periodic maintenance thread
+  (continuation `0x…0078402c`, the known red herring) keeps cycling.
+- The blocked worker threads' backtraces land in the **IOKit matching machinery**
+  (`0x…07d3edd8` → `0x…07d3bba4` → `0x…07d3c0e0` = `_IOServiceJob`/
+  `doServiceMatch`/`probeCandidates`, `IOService::startCandidate` at
+  `0x…07e62024` in **AppleARMPlatform**, through `SystemPowerProfileOverrideDict`).
+  Each ends in a **`waitForService`-style wait** (`0x…07d4a8c8`: installs a
+  matching notification on IOKit's service globals and blocks on a semaphore
+  until a matching provider is published), then `thread_block`.
+
+So several drivers (AppleARMPlatform among them) call `waitForService` /
+`waitForMatchingService` during their `start`/`probe` and block **before they
+touch any hardware** — which is exactly why there is zero arm-io MMIO. The
+awaited provider services never publish because their backing devices were
+**skipped** (coprocessors) or the **primary interrupt controller was never
+registered** (the IODeviceTree resolver is no-op'd). IOKit matching therefore
+deadlocks and boot never reaches the console handoff / root mount.
+
+This is the concrete form of OPTION 3. **Next:** decompile the blocked drivers'
+`start` (AppleARMPlatform `0x…07e62024`; the driver at `0x…078c596c`; the one at
+`0x…07cfea70`) to read the exact matching dictionaries / service keys they wait
+on, then publish those services — register the primary AIC properly (so
+interrupt-driven matching proceeds) and model/stub the awaited coprocessor
+services so they match. Tooling: `thread_block` tracer + fp-chain unwinder in
+scratch (`tblock_trace.py`, `unwind_block.py`); PAC-strip a stacked return addr
+with `(x & 0xffffffffff) | 0xfffffff000000000`, never a bare 48-bit mask.
+
 ### How to diagnose a boot crash
 
 `-serial file:con.log -D dbg.log -d int,guest_errors,unimp` gives the exception
