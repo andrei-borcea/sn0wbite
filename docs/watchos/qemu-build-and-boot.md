@@ -283,6 +283,55 @@ flag, then supply it — a stubbed-coprocessor completion (RTC/SMC/AOP mailbox),
 AIC-routed device IRQ, or a second CPU (the DT has two `apple,tempest` nodes and
 CPU1 never leaves the reset vector). 4 GB boot is also slow under TCG.
 
+### DockChannel serial console + the `debug-enabled` gate — MODELED (console still deferred)
+
+To try to *see* the boot log, the machine now models the **Apple DockChannel UART**,
+which is the watchOS S5 serial console (not the Samsung `uart0`). `t8030.c`
+`t8030_create_dockchannel()` maps the two register windows from the
+`/arm-io/dockchannel-uart` DT node (`reg = [0x3d128000, 0x10000, 0x3d10c000,
+0x4000]`) with the XNU-6153 pexpert layout (`pe_serial.c`/`dockchannel.h`): TX
+`WDATA1 = +0x4004`, TX-free-space `WSTAT = +0x4014` (always reports space so
+`serial_init`'s `while(!tr0())` exits), RX empty. `xnu.c` **keeps** the
+`dockchannel-uart` DT node (it was being stripped by `REM_NAMES`), DockChannel
+takes `serial_hd(0)` and the Samsung UARTs shift to `serial_hd(i+1)`.
+
+Real bug fixed on the way: the DockChannel windows sit **inside** the broad
+`pmgr-unk-reg-18` placeholder range (the `pmgr` DT `reg` covers
+`soc+0x3d100000..+0x3d1a0000`), which **shadowed** the device — `info mtree -f`
+showed only the placeholder. Mapping DockChannel with
+`memory_region_add_subregion_overlap(..., 1)` (priority 1) makes the real device
+win for its exact sub-ranges, the same technique as the boot-display vram mapping.
+
+Also set `/chosen debug-enabled = 1` in the DT. A production-fused unit leaves it
+`0`, which makes `PE_i_can_has_debugger()` return false and **suppresses the serial
+console and kprintf entirely** — the gate that keeps a release kernelcache silent.
+iBoot sets it on a development-fused unit; we provide the same contract.
+
+### DECISIVE finding: the kernel does ZERO arm-io MMIO — blocked before IOKit
+
+Instrumenting every SoC MMIO handler (PMGR reg + unk, AIC read/write, DockChannel)
+with counters shows the kernel performs **no arm-io MMIO of any kind** across the
+whole run — not one PMGR read/write, not one AIC access, not one serial byte — even
+with the DockChannel device correctly mapped (confirmed on top via `info mtree`) and
+`debug-enabled = 1`. Yet CPU0 runs the **idle loop healthily** (both-CPU PC sampling:
+CPU0 cycles `0x…0784adb8 ↔ 0x…0784add8`, i.e. it wakes from WFI — the physical-timer
+FIQ is being delivered — arms the next deadline via `0x…0784740c`, re-idles; CPU1
+stays at the reset vector `0x805df8000`, never started because the kernel never
+writes the PMGR cpu-start reg, but `-smp 1` is identical so CPU1 is not the blocker).
+
+This **reframes** the stall: reaching the scheduler idle loop means `serial_init`
+and `sched_init` ran, but the **bootstrap thread is blocked before any device I/O**,
+i.e. before IOKit device matching. On this SoC the early console is deferred, so
+until the bootstrap thread unblocks and IOKit attaches the serial driver, **no
+console appears regardless** — the DockChannel model + `debug-enabled` are necessary
+groundwork but cannot produce output on their own. The kernel's `pram`/embedded
+panic-log region (`0x8ffeb0000`) is all-zero during normal boot (it is a panic-only
+mirror), so it is not a shortcut to the boot log either. This is consistent with the
+`assert_wait` analysis above: the bootstrap thread waits on a synchronization
+primitive (`flag 0x…08bcb550`) that never reaches its condition on the minimal
+machine. **Next:** identify what the bootstrap thread waits on in early
+`kernel_bootstrap` (post `sched_init`, pre IOKit) and supply it.
+
 ### How to diagnose a boot crash
 
 `-serial file:con.log -D dbg.log -d int,guest_errors,unimp` gives the exception

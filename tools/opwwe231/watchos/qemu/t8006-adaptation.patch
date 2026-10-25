@@ -7,8 +7,25 @@
 # wired only the virtual one, so the timer FIQ was never delivered; minimal machine (coprocessors
 # skipped, nvram optional, 4 GB DRAM kept -- do NOT shrink); DT timebase + load-time seed of
 # gPEClockFrequencyInfo; KEEP_COMP += apple,tempest; tolerant no-op of the IODeviceTree interrupt
-# resolver. Boot: early-asm -> pmap -> PPL -> VM init -> scheduler starts, idle thread runs; next
-# blocker = the bootstrap thread does not progress (no console yet) -- a scheduler/thread-block issue.
+# resolver.
+#
+# Console (this revision): model the Apple DockChannel UART -- the watchOS S5 serial console, not the
+# Samsung uart0 (t8030.c t8030_create_dockchannel; XNU 6153 pexpert dockchannel.h/pe_serial.c reg
+# layout: WDATA1 TX +0x4004, WSTAT free-space +0x4014, RX regs empty). Its register windows sit INSIDE
+# the broad pmgr placeholder range, so map them at priority 1 (add_subregion_overlap) to shadow it;
+# DockChannel takes serial_hd(0) and the Samsung UARTs shift to serial_hd(i+1); xnu.c KEEPS the
+# dockchannel-uart DT node (was being stripped). Set /chosen debug-enabled = 1 (t8030.c): a
+# production-fused unit leaves it 0, which makes PE_i_can_has_debugger() false and SUPPRESSES the
+# serial console + kprintf -- the gate that kept early boot silent.
+#
+# Boot status: early-asm -> pmap -> PPL -> VM init -> scheduler starts; CPU0 runs the idle loop
+# healthily (physical-timer FIQ wakes it from WFI). CPU1 stays at its reset vector (the kernel never
+# writes the PMGR cpu-start reg), but -smp 1 stalls identically, so CPU1 is NOT the blocker. DECISIVE
+# finding this revision: the kernel performs ZERO arm-io MMIO of any kind (no PMGR, no AIC, no serial
+# read or write) -- the bootstrap thread is blocked BEFORE IOKit device matching, so the deferred
+# serial console never attaches and no device is ever touched. Next blocker = find what the bootstrap
+# thread waits on in early kernel_bootstrap (post sched_init, pre IOKit); console remains deferred
+# until then even with the DockChannel model + debug-enabled in place.
 #
 diff --git a/hw/arm/apple_a13.c b/hw/arm/apple_a13.c
 index d304c75..7d172bd 100644
@@ -199,10 +216,18 @@ index 0000000..2cc4d2c
 +    define_one_arm_cp_reg(cpu, &aprr_el1);
 +}
 diff --git a/hw/arm/t8030.c b/hw/arm/t8030.c
-index fd0ce37..3b2735c 100644
+index fd0ce37..8ce3bae 100644
 --- a/hw/arm/t8030.c
 +++ b/hw/arm/t8030.c
-@@ -70,6 +70,12 @@
+@@ -38,6 +38,7 @@
+ #include "sysemu/reset.h"
+ #include "sysemu/runstate.h"
+ #include "qemu/error-report.h"
++#include "chardev/char-fe.h"
+ #include "hw/platform-bus.h"
+ #include "arm-powerctl.h"
+ 
+@@ -70,6 +71,12 @@
  #include "hw/display/m1_fb.h"
  
  #define T8030_DRAM_BASE         (0x800000000)
@@ -215,7 +240,119 @@ index fd0ce37..3b2735c 100644
  #define T8030_DRAM_SIZE         (4 * GiB)
  
  /*
-@@ -174,6 +180,33 @@ static void t8030_patch_kernel(struct mach_header_64 *hdr)
+@@ -137,6 +144,111 @@ static void t8030_start_cpus(MachineState* machine, uint64_t cpu_mask)
+     }
+ }
+ 
++/*
++ * sn0w: minimal Apple DockChannel UART -- the watchOS S5 serial console (the
++ * Samsung uart0 is NOT the console on this SoC). Register layout from XNU 6153
++ * pexpert/pexpert/arm/dockchannel.h + pexpert/arm/pe_serial.c, channel 0:
++ *   WDATA1 (TX)            = uart_base + 0x4004
++ *   WSTAT  (TX free space) = uart_base + 0x4014  (low 9 bits = free slots)
++ *   RDATA0 (RX count)      = uart_base + 0x4018  (low 7 bits)
++ *   RDATA1 (RX char)       = uart_base + 0x401c  ((>>8) & 0xff)
++ *   DOCK_RDATA1            = uart_base + 0xc01c  (init reads once)
++ *   AGENT AP INTR regs     = agent_base + 0x00..0x0c
++ * We model just enough for the kernel's polled console: WSTAT always reports
++ * free space so serial_init's `while (!tr0())` exits, TX bytes go to the
++ * chardev, RX reports empty. reg = [uart_base, uart_len, agent_base, agent_len].
++ */
++typedef struct DockChannelUartState {
++    CharBackend chr;
++    MemoryRegion uart_iomem;
++    MemoryRegion agent_iomem;
++} DockChannelUartState;
++
++static uint64_t dockchannel_uart_mr_read(void *opaque, hwaddr off, unsigned size)
++{
++    switch (off) {
++    case 0x4014: /* WSTAT: low 9 bits = TX FIFO free slots; always "space" */
++        return 0x1ff;
++    default:     /* RDATA0/RDATA1/DOCK_RDATA1: no RX; everything else 0 */
++        return 0;
++    }
++}
++
++static void dockchannel_uart_mr_write(void *opaque, hwaddr off, uint64_t val,
++                                      unsigned size)
++{
++    DockChannelUartState *s = opaque;
++
++    if (off == 0x4004) { /* WDATA1: transmit one byte to the chardev */
++        uint8_t ch = (uint8_t)val;
++        qemu_chr_fe_write_all(&s->chr, &ch, 1);
++    }
++    /* DRAIN_CFG (0x0008) and all other registers: accepted and ignored */
++}
++
++static const MemoryRegionOps dockchannel_uart_mr_ops = {
++    .read = dockchannel_uart_mr_read,
++    .write = dockchannel_uart_mr_write,
++    .endianness = DEVICE_LITTLE_ENDIAN,
++    .valid.min_access_size = 4,
++    .valid.max_access_size = 4,
++};
++
++static uint64_t dockchannel_agent_mr_read(void *opaque, hwaddr off, unsigned size)
++{
++    return 0; /* AP interrupt enable/status: no pending interrupts */
++}
++
++static void dockchannel_agent_mr_write(void *opaque, hwaddr off, uint64_t val,
++                                       unsigned size)
++{
++    /* init does read-modify-write to clear the enables; accept and ignore */
++}
++
++static const MemoryRegionOps dockchannel_agent_mr_ops = {
++    .read = dockchannel_agent_mr_read,
++    .write = dockchannel_agent_mr_write,
++    .endianness = DEVICE_LITTLE_ENDIAN,
++    .valid.min_access_size = 4,
++    .valid.max_access_size = 4,
++};
++
++static void t8030_create_dockchannel(T8030MachineState *tms, Chardev *chr)
++{
++    DTBNode *node = find_dtb_node(tms->device_tree, "arm-io/dockchannel-uart");
++    DTBProp *prop;
++    hwaddr *reg;
++    DockChannelUartState *s;
++
++    if (node == NULL) {
++        return;
++    }
++    prop = find_dtb_prop(node, "reg");
++    assert(prop != NULL && prop->length >= 4 * sizeof(hwaddr));
++    reg = (hwaddr *)prop->value;
++
++    s = g_new0(DockChannelUartState, 1);
++    if (chr != NULL) {
++        qemu_chr_fe_init(&s->chr, chr, &error_abort);
++    }
++    /*
++     * The DockChannel register windows sit INSIDE the broad PMGR placeholder
++     * range (pmgr "reg" covers soc+0x3d100000..+0x3d1a0000 on this DT, which
++     * swallows both DockChannel windows). Map the real device at priority 1 so
++     * it shadows that placeholder for its exact sub-ranges -- same technique as
++     * the boot-display vram mapping below.
++     */
++    memory_region_init_io(&s->uart_iomem, OBJECT(tms), &dockchannel_uart_mr_ops,
++                          s, "dockchannel-uart", reg[1]);
++    memory_region_add_subregion_overlap(tms->sysmem, tms->soc_base_pa + reg[0],
++                                        &s->uart_iomem, 1);
++    memory_region_init_io(&s->agent_iomem, OBJECT(tms),
++                          &dockchannel_agent_mr_ops, s, "dockchannel-agent",
++                          reg[3]);
++    memory_region_add_subregion_overlap(tms->sysmem, tms->soc_base_pa + reg[2],
++                                        &s->agent_iomem, 1);
++}
++
+ static void t8030_create_s3c_uart(const T8030MachineState *tms, uint32_t port,
+                                   Chardev *chr)
+ {
+@@ -174,6 +286,33 @@ static void t8030_patch_kernel(struct mach_header_64 *hdr)
  {
      //disable_kprintf_output = 0
      // *(uint32_t *)vtop_static(0xFFFFFFF0077142C8) = 0;
@@ -249,7 +386,7 @@ index fd0ce37..3b2735c 100644
      kpf();
  }
  
-@@ -480,9 +513,14 @@ static void t8030_memory_setup(MachineState *machine)
+@@ -480,9 +619,14 @@ static void t8030_memory_setup(MachineState *machine)
  
      nvram = APPLE_NVRAM(qdev_find_recursive(sysbus_get_default(), "nvram"));
      if (!nvram) {
@@ -267,7 +404,7 @@ index fd0ce37..3b2735c 100644
      apple_nvram_load(nvram);
  
      fprintf(stderr, "boot_mode: %u\n", tms->boot_mode);
-@@ -521,6 +559,7 @@ static void t8030_memory_setup(MachineState *machine)
+@@ -521,6 +665,7 @@ static void t8030_memory_setup(MachineState *machine)
      if (apple_nvram_serialize(nvram, info->nvram_data, sizeof(info->nvram_data)) < 0) {
          error_report("%s: Failed to read NVRAM", __func__);
      }
@@ -275,7 +412,29 @@ index fd0ce37..3b2735c 100644
  
      if (tms->ticket_filename) {
          if (!g_file_get_contents(tms->ticket_filename, &info->ticket_data, (gsize *)&info->ticket_length, NULL)) {
-@@ -725,6 +764,14 @@ static void t8030_cpu_setup(MachineState *machine)
+@@ -561,6 +706,21 @@ static void t8030_memory_setup(MachineState *machine)
+         tms->panic_size = panic_size;
+     }
+ 
++    /*
++     * sn0w: enable the kernel debug/serial console. On a production-fused
++     * device iBoot leaves /chosen/debug-enabled = 0, which makes
++     * PE_i_can_has_debugger() return false and SUPPRESSES the serial console
++     * and kprintf entirely -- the kernel then performs no serial MMIO and boots
++     * blind. Set it to 1 (what a development-fused unit gets) so the DockChannel
++     * console comes up and we can see the boot log. Pairs with the boot-arg
++     * debug=0x8 (DB_KPRT).
++     */
++    {
++        DTBNode *chosen = find_dtb_node(tms->device_tree, "chosen");
++        uint32_t debug_enabled = 1;
++        set_dtb_prop(chosen, "debug-enabled", 4, &debug_enabled);
++    }
++
+     DTBNode *vram = find_dtb_node(tms->device_tree, "vram");
+     if (vram) {
+         uint64_t vram_reg[2] = { 0 };
+@@ -725,6 +885,14 @@ static void t8030_cpu_setup(MachineState *machine)
              continue;
          }
  
@@ -290,7 +449,7 @@ index fd0ce37..3b2735c 100644
          tms->cpus[i] = apple_a13_cpu_create(node);
          cluster_id = tms->cpus[i]->cluster_id;
  
-@@ -1712,6 +1759,15 @@ static void t8030_machine_init(MachineState *machine)
+@@ -1712,6 +1880,15 @@ static void t8030_machine_init(MachineState *machine)
                                                  &tms->bootinfo.trustcache_size);
      data = 24000000;
      set_dtb_prop(tms->device_tree, "clock-frequency", 4, &data);
@@ -306,7 +465,21 @@ index fd0ce37..3b2735c 100644
      child = find_dtb_node(tms->device_tree, "arm-io");
      assert(child != NULL);
  
-@@ -1780,42 +1836,42 @@ static void t8030_machine_init(MachineState *machine)
+@@ -1773,49 +1950,55 @@ static void t8030_machine_init(MachineState *machine)
+ 
+     t8030_create_aic(machine);
+ 
++    /*
++     * sn0w: the watchOS S5 serial console is DockChannel, not the Samsung
++     * uart0 -- give DockChannel the first -serial backend and shift the
++     * Samsung UARTs up one (a chardev can't be shared between two devices).
++     */
++    t8030_create_dockchannel(tms, serial_hd(0));
+     for (int i = 0; i < T8030_NUM_UARTS; i++) {
+-        t8030_create_s3c_uart(tms, i, serial_hd(i));
++        t8030_create_s3c_uart(tms, i, serial_hd(i + 1));
+     }
+ 
      t8030_pmgr_setup(machine);
      t8030_amcc_setup(machine);
  
@@ -373,7 +546,7 @@ index fd0ce37..3b2735c 100644
      tms->init_done_notifier.notify = t8030_machine_init_done;
      qemu_add_machine_init_done_notifier(&tms->init_done_notifier);
 diff --git a/hw/arm/xnu.c b/hw/arm/xnu.c
-index 2ca4983..08578e1 100644
+index 2ca4983..abd0b0f 100644
 --- a/hw/arm/xnu.c
 +++ b/hw/arm/xnu.c
 @@ -43,6 +43,7 @@ static const char *KEEP_COMP[] = {
@@ -384,6 +557,17 @@ index 2ca4983..08578e1 100644
      "aic,1\0$",
      "pmgr1,s8000\0$",
      "pmgr1,t8030\0$",
+@@ -74,7 +75,9 @@ static const char *KEEP_COMP[] = {
+ 
+ static const char *REM_NAMES[] = {
+     "backlight\0$",
+-    "dockchannel-uart\0$",
++    /* sn0w: keep dockchannel-uart -- it is the watchOS S5 serial console; the
++     * T8006 machine now models it (t8030_create_dockchannel). Removing it left
++     * the kernel with no console (it does NOT fall back to the Samsung uart0). */
+     "sep\0$", "pmp\0$",
+     "aop-gpio\0$",
+     "dotara\0$", "baseband-spmi\0$", "stockholm-spmi\0$",
 diff --git a/include/hw/arm/sn0w_cpu.h b/include/hw/arm/sn0w_cpu.h
 new file mode 100644
 index 0000000..d5dbc6d
