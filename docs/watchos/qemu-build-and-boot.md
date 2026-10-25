@@ -252,13 +252,27 @@ but this is **not** a CPU1 wait: `-smp 1` stalls identically. So the scheduler i
 up and the idle thread runs, but the **bootstrap thread** (which would run
 `console_init`, IOKit, and the rest) never makes progress — it is blocked and
 nothing makes it runnable, so the idle loop spins forever and no console banner is
-printed. Likely causes: the bootstrap thread is blocked on a stubbed/missing device
-or a completion/interrupt that never arrives (we skipped the coprocessors and
-no-op'd the IODeviceTree interrupt resolver, so only the per-CPU timer FIQ is
-wired — AIC-routed device interrupts are not). **Next:** find what the bootstrap
-thread is blocked on (trace the non-idle thread / the last `thread_block`), then
-provide that completion — most likely by bringing up **AIC-routed interrupt
-delivery** for the device(s) it waits on. 4 GB boot is also slow under TCG.
+printed.
+
+**Pinpointed (via a rebuilt symbol map).** The kernelcache is stripped
+(`nm` → 0 symbols), so [`tools/.../port/symbolicate.py`](../../tools/opwwe231/watchos/port/symbolicate.py)
+rebuilds an address→name map from `__func__` strings (a C-identifier `__cstring`
+referenced by exactly one function names it): **6278 functions named**. An
+`assert_wait` tracer (lldb breakpoint callback at `assert_wait = 0x…07844d6c`,
+caller symbolicated via the map) then showed a boot thread calling `assert_wait`
+**~200×** from the **same** site, all from the function at **`0x…0784802c`** on the
+same event token (its own address, `adr x16,0x…0784802c; paciza`). That function
+spins: `ldrb w8,[0x…08bcb550]; cmp w8,1; b.eq done; … assert_wait; thread_block` —
+it **waits for the byte flag at `0x…08bcb550` to become 1**, which never happens, so
+it blocks, is re-woken (timer), re-checks, re-waits, forever. The flag's only setter
+is `0x…0784bc54` (store at `0x…0784be64`), gated by a counter/threshold
+(`[0x…08b547cc]` vs `[0x…08bcb310]`) and a lock (`ldxr`/`casa`/`wfe` on
+`0x…08c57470`) — a synchronization/rendezvous primitive that never reaches its
+condition on our minimal machine. The functions are called through PAC'd vtables
+and reference no strings, so they are not named yet. **Next:** identify this sync
+primitive (what the counter/threshold mean and who should set the flag — likely a
+stubbed coprocessor completion, e.g. RTC/SMC/AOP, or an AIC-routed device IRQ), then
+satisfy it. 4 GB boot is also slow under TCG.
 
 ### How to diagnose a boot crash
 
