@@ -109,17 +109,33 @@ system timer run correctly — no per-reader code patching, no whack-a-mole. (Th
 also carries `timebase-frequency = 24 MHz` for `pe_identify_machine`'s own use.)
 Result: the boot clears both timebase panics and advances into IOKit.
 
-### Current blocker: NULL vcall-result deref at `0x…07d2b9dc` (IOKit)
+### Current blocker: IOKit interrupt-controller resolution (AIC not registered)
 
-With the timebase patched the boot advances well past the timers into IOKit /
-platform-expert init. It now takes a **Data Abort, FAR 0** (ESR 0x25, read of
-address 0) at `0x…07d2b9dc` (`ldr x8, [x28]` with `x28 == 0`): the preceding
-C++ virtual call `blraa` at `0x…07d2b9cc` returned NULL and the code dereferences
-it. An IOKit object/service was not created — likely because a device we stub or
-skip for the minimal machine does not register the expected service. Next: identify
-the vtable method at `0x…07d2b9cc` and which service/object is missing, then model
-or stub enough of it. (The NULL deref then funnels into the usual panic finalizer,
-hence the second trap at `0x…078241b0`.) Console is still upstream.
+The Data Abort (FAR 0) at `0x…07d2b9dc` is IODeviceTree interrupt resolution. The
+crashing function (deep C++, all PAC-signed vcalls) walks devices and resolves each
+one's `interrupt-parent`/`interrupts` against the collection of **registered
+interrupt controllers** (a singleton at `0x…08c796a8`), matching by phandle. The
+key string in hand is `x24 = "interrupt-controller"` (`0x…072c96fb`) and the target
+phandle being resolved is `x19 = 0x10` — which is exactly the **AIC** (`/arm-io/aic`,
+compatible `aic,1`, `AAPL,phandle = 0x10`, has the `interrupt-controller` property;
+the node survives the DT filter). The search finds no controller for phandle `0x10`
+(the collection is empty / the AIC is not in it), returns NULL, and the code
+dereferences it (`mov x28, 0; ... ; ldr x8, [x28]`).
+
+So the AIC is **not registered as an interrupt controller** at the point a device
+resolves its interrupt-parent. On real hardware / the reference iOS boot the
+platform expert registers the primary controller early. Candidates for our minimal
+machine: this resolution runs before the AIC driver matches/registers (ordering),
+or our stubbed platform does not drive the AIC registration. (Our DT has 5
+interrupt-controller nodes — aic 0x10, gpio 0x23 `gpio,t8006`, spmi 0x26, aop-gpio
+0x4f, smc-pmu 0x55; note `gpio,t8006` is **not** in `KEEP_COMP`, so the gpio ICs are
+filtered out — a device referencing them would also fail, a second thing to fix.)
+
+**Next:** determine why the AIC is absent from the registry — find where interrupt
+controllers register into `0x…08c796a8` and whether the AIC's registration runs
+before this resolution; then register it early (platform/DT) or fix the ordering.
+Also add the T8006 device compatibles (e.g. `gpio,t8006`) to `KEEP_COMP` as needed,
+in step with modelling/stubbing those devices. Console is still upstream.
 
 ### How to diagnose a boot crash
 
