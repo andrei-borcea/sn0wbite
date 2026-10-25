@@ -32,7 +32,48 @@ qemu-system-aarch64 -M t8030,trustcache-filename=$O/Firmware/018-09700-014.dmg.t
 
 `-kernel` takes the raw IM4P kernelcache (QEMU unwraps IM4P + lzfse); `-dtb` takes the raw IM4P DeviceTree (payload type `dtre`).
 
-## Result (25 October 2026) — full IOKit up, waits on IOMedia
+## Result (25 October 2026, late) — ramdisk mounted, kernel exec'd userland
+
+Passing the OTA's own update ramdisk through `-initrd` and wiring `rd=md0` into
+the boot args mounts it as root:
+
+```
+BSD root: md0, major 3, minor 0
+apfs_vfsop_mountroot: apfs: mountroot called!
+apfs_vfsop_mount: unable to root from devvp (root_device): 2       # DMG is HFS+, not APFS
+apfs_vfsop_mountroot: apfs: mountroot failed, error: 2
+hfs: mounted GraceUpdate17U224.arm64_32SURamDisk on device b(3, 0)
+```
+
+After the mount the console goes quiet, which is expected: launchd takes over,
+further messages route through ASL/syslog instead of kprintf, and
+`com.apple.restored` opens its XPC listener waiting for a paired iPhone that
+never arrives. No panic / no `launchd died` → PID 1 is alive. To observe
+userland on serial, append `-s` (single-user → launchd execs `/bin/sh` on the
+console; with `-serial mon:stdio` an interactive shell appears).
+
+Ramdisk source (OTA layout):
+
+```
+~/Downloads/<ota-hash>/AssetData/payload/replace/usr/standalone/update/ramdisk/arm64_32SURamDisk.dmg
+```
+
+Boot command:
+
+```
+qemu-system-aarch64 -smp 2 \
+    -M t8030,trustcache-filename=$O/Firmware/018-09700-014.dmg.trustcache,kaslr-off=on \
+    -kernel $O/kernelcache.release.watch5 \
+    -dtb $O/Firmware/all_flash/DeviceTree.n146bap.im4p \
+    -initrd $O/../payload/replace/usr/standalone/update/ramdisk/arm64_32SURamDisk.dmg \
+    -append "debug=0x8 -v serial=3" \
+    -serial mon:stdio -display none -no-reboot
+```
+
+Next milestones: confirm shell with `-s`; then reconstruct the full rootfs
+from `AssetData/payloadv2/` for SpringBoard/UI.
+
+## Result (25 October 2026, mid) — full IOKit up, waits on IOMedia
 
 The kernelcache now boots through the full driver stack and quiesces on the
 root block device. Tail of the console (headers only):

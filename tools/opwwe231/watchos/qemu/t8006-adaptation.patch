@@ -73,6 +73,15 @@
 #     "MANUAL_PS=0 for CPM" (ApplePMGR.cpp:4421). Fixed by sizing pmgr_reg[] to 0x180000 and adding
 #     a defence-in-depth bounds-check in the ops (returns 0 / drops on OOB).
 #
+# [5] -initrd -> rd=md0 wiring (ramdisk mountroot). In the pristine fork the "-restore rd=md0"
+#     cmdline is only prepended when nvram.auto-boot==false, and our minimal machine skips the
+#     nvram device entirely -- so the ramdisk was loaded (macho_load_ramdisk + DT RAMDisk prop set)
+#     but the kernel never saw the rd= boot arg, falling back to "Waiting on IOMedia". Added a
+#     parallel wiring in the no-nvram branch: when machine->initrd_filename is set, prepend
+#     "rd=md0 " to the user cmdline. Omit -restore / -progress (they trigger restore-boot
+#     validations + progress-UI hooks that panic silently on our machine); plain rd=md0 is enough
+#     for XNU's BSD root path to create /dev/md0 from the loaded ramdisk and mount it.
+#
 # Boot status with this revision: full IOKit init runs to the end. corecrypto/FIPS PASSED ->
 # CoreAnalyticsHub -> Image4 -> AppleT8006IO (B1) -> AppleInterruptController (AIC) ->
 # AppleT8006GPIOIC -> AppleT8006MemCacheController + tunables -> AppleT8006PlatformErrorHandler
@@ -82,9 +91,17 @@
 # AppleMobileApNonce (timeout AES, expected, no HW) -> AppleARMPE::getGMTTimeOfDay (no RTC,
 # expected) -> apfs_module_start v1412.100.68 -> AppleFSCompressionTypeZlib ->
 # IOSurfaceRoot::installMemoryRegions() -> "Waiting on IOMedia Partition ID=0x1". The kernel is now
-# idle waiting on the root block device -- the OTA bundle doesn't carry a mountable rootfs, so this
-# is the expected quiesce point. Next milestone: supply a rootfs (ramdisk or synth image), reach
-# launchd / userland.
+
+# idle waiting on the root block device. Passing the OTA's own ramdisk via -initrd (the IM4P-wrapped
+# arm64_32SURamDisk.dmg from AssetData/payload/replace/usr/standalone/update/ramdisk/) now lands:
+#   BSD root: md0, major 3, minor 0
+#   apfs_vfsop_mount: unable to root from devvp (root_device): 2   (DMG is HFS+, not APFS)
+#   hfs: mounted GraceUpdate17U224.arm64_32SURamDisk on device b(3, 0)
+# -- the kernel mounts the Watch 6.3.1 Restore ramdisk as root. After that the console goes quiet,
+# which is expected for a restore ramdisk: launchd takes over, routes further logs through ASL/syslog
+# instead of kprintf, and com.apple.restored opens its XPC listener waiting for a paired iPhone that
+# never arrives. Next milestones: confirm userland with -s (single-user shell on serial), then
+# reconstruct the full rootfs from AssetData/payloadv2/ for SpringBoard/UI.
 
 diff --git a/hw/arm/apple_a13.c b/hw/arm/apple_a13.c
 index d304c75..7d172bd 100644
@@ -163,7 +180,7 @@ index 452a377..dda350c 100644
      'apple_a9.c',
      'apple_sep.c',
 diff --git a/hw/arm/t8030.c b/hw/arm/t8030.c
-index fd0ce37..40e933f 100644
+index fd0ce37..b1c23cc 100644
 --- a/hw/arm/t8030.c
 +++ b/hw/arm/t8030.c
 @@ -38,6 +38,7 @@
@@ -387,7 +404,7 @@ index fd0ce37..40e933f 100644
      kpf();
  }
  
-@@ -480,9 +673,14 @@ static void t8030_memory_setup(MachineState *machine)
+@@ -480,9 +673,28 @@ static void t8030_memory_setup(MachineState *machine)
  
      nvram = APPLE_NVRAM(qdev_find_recursive(sysbus_get_default(), "nvram"));
      if (!nvram) {
@@ -399,13 +416,27 @@ index fd0ce37..40e933f 100644
 +         * kernel console output: proceed with an empty nvram proxy and the
 +         * plain command line instead of aborting. */
 +        warn_report("%s: no nvram device; booting with empty nvram proxy", __func__);
-+        asprintf(&cmdline, "%s", machine->kernel_cmdline);
++        /* sn0w T8006: when -initrd supplies a ramdisk, prepend the restore boot
++         * args ("-restore rd=md0 ...") so XNU creates /dev/md0 from the loaded
++         * ramdisk and mounts it as root. In the full fork this branch is only
++         * reached via the nvram's "auto-boot=false" path; our minimal machine
++         * skips nvram entirely, so we do the same wiring here when there is a
++         * ramdisk, and otherwise pass the user cmdline through unchanged. */
++        if (machine->initrd_filename) {
++            /* Just rd=md0 to point BSD at the loaded ramdisk; omit -restore and
++             * -progress for now (they trigger early restore-boot validations and
++             * UI progress hooks that fail silently on our minimal machine). */
++            asprintf(&cmdline, "rd=md0 %s",
++                     machine->kernel_cmdline ? machine->kernel_cmdline : "");
++        } else {
++            asprintf(&cmdline, "%s", machine->kernel_cmdline);
++        }
 +        info->nvram_size = 0;
 +    } else {
      apple_nvram_load(nvram);
  
      fprintf(stderr, "boot_mode: %u\n", tms->boot_mode);
-@@ -521,6 +719,7 @@ static void t8030_memory_setup(MachineState *machine)
+@@ -521,6 +733,7 @@ static void t8030_memory_setup(MachineState *machine)
      if (apple_nvram_serialize(nvram, info->nvram_data, sizeof(info->nvram_data)) < 0) {
          error_report("%s: Failed to read NVRAM", __func__);
      }
@@ -413,7 +444,7 @@ index fd0ce37..40e933f 100644
  
      if (tms->ticket_filename) {
          if (!g_file_get_contents(tms->ticket_filename, &info->ticket_data, (gsize *)&info->ticket_length, NULL)) {
-@@ -561,6 +760,21 @@ static void t8030_memory_setup(MachineState *machine)
+@@ -561,6 +774,21 @@ static void t8030_memory_setup(MachineState *machine)
          tms->panic_size = panic_size;
      }
  
@@ -435,7 +466,7 @@ index fd0ce37..40e933f 100644
      DTBNode *vram = find_dtb_node(tms->device_tree, "vram");
      if (vram) {
          uint64_t vram_reg[2] = { 0 };
-@@ -624,19 +838,27 @@ static void pmgr_reg_write(void *opaque, hwaddr addr, uint64_t data, unsigned si
+@@ -624,19 +852,27 @@ static void pmgr_reg_write(void *opaque, hwaddr addr, uint64_t data, unsigned si
      if (addr >= 0x80000 && addr <= 0x8c000) {
          value = (value & 0xf) << 4 | (value & 0xf);
      }
@@ -465,7 +496,7 @@ index fd0ce37..40e933f 100644
      uint64_t result = 0;
      switch(addr) {
      case 0xf0010: /* AppleT8030PMGR::commonSramCheck */
-@@ -644,6 +866,16 @@ static uint64_t pmgr_reg_read(void *opaque, hwaddr addr, unsigned size)
+@@ -644,6 +880,16 @@ static uint64_t pmgr_reg_read(void *opaque, hwaddr addr, unsigned size)
      default:
          break;
      }
@@ -482,7 +513,7 @@ index fd0ce37..40e933f 100644
      memcpy(&result, tms->pmgr_reg + addr, size);
      return result;
  }
-@@ -725,6 +957,14 @@ static void t8030_cpu_setup(MachineState *machine)
+@@ -725,6 +971,14 @@ static void t8030_cpu_setup(MachineState *machine)
              continue;
          }
  
@@ -497,7 +528,7 @@ index fd0ce37..40e933f 100644
          tms->cpus[i] = apple_a13_cpu_create(node);
          cluster_id = tms->cpus[i]->cluster_id;
  
-@@ -752,6 +992,23 @@ static void t8030_create_aic(MachineState *machine)
+@@ -752,6 +1006,23 @@ static void t8030_create_aic(MachineState *machine)
      timebase = find_dtb_node(soc, "aic-timebase");
      assert(timebase);
  
@@ -521,7 +552,7 @@ index fd0ce37..40e933f 100644
      tms->aic = apple_aic_create(machine->smp.cpus, child, timebase);
      object_property_add_child(OBJECT(machine), "aic", OBJECT(tms->aic));
      assert(tms->aic);
-@@ -787,6 +1044,24 @@ static void t8030_pmgr_setup(MachineState* machine)
+@@ -787,6 +1058,24 @@ static void t8030_pmgr_setup(MachineState* machine)
      child = find_dtb_node(child, "pmgr");
      assert(child != NULL);
  
@@ -546,7 +577,7 @@ index fd0ce37..40e933f 100644
      prop = find_dtb_prop(child, "reg");
      assert(prop);
  
-@@ -1682,6 +1957,21 @@ static void t8030_machine_init(MachineState *machine)
+@@ -1682,6 +1971,21 @@ static void t8030_machine_init(MachineState *machine)
  
      if (tms->rtbuddyv2_protocol_version == 0) {
          switch (BUILD_VERSION_MAJOR(build_version)) {
@@ -568,7 +599,7 @@ index fd0ce37..40e933f 100644
              case 13:
                  tms->rtbuddyv2_protocol_version = 10;
                  break;
-@@ -1712,6 +2002,15 @@ static void t8030_machine_init(MachineState *machine)
+@@ -1712,6 +2016,15 @@ static void t8030_machine_init(MachineState *machine)
                                                  &tms->bootinfo.trustcache_size);
      data = 24000000;
      set_dtb_prop(tms->device_tree, "clock-frequency", 4, &data);
@@ -584,7 +615,7 @@ index fd0ce37..40e933f 100644
      child = find_dtb_node(tms->device_tree, "arm-io");
      assert(child != NULL);
  
-@@ -1729,6 +2028,26 @@ static void t8030_machine_init(MachineState *machine)
+@@ -1729,6 +2042,26 @@ static void t8030_machine_init(MachineState *machine)
      tms->soc_base_pa = ranges[1];
      tms->soc_size = ranges[2];
  
@@ -611,7 +642,7 @@ index fd0ce37..40e933f 100644
      memset(buffer, 0, sizeof(buffer));
      memcpy(buffer, "MWL72", 5);
      set_dtb_prop(tms->device_tree, "model-number", 32, buffer);
-@@ -1773,49 +2092,59 @@ static void t8030_machine_init(MachineState *machine)
+@@ -1773,49 +2106,59 @@ static void t8030_machine_init(MachineState *machine)
  
      t8030_create_aic(machine);
  
