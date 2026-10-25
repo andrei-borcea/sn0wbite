@@ -269,10 +269,19 @@ is `0x…0784bc54` (store at `0x…0784be64`), gated by a counter/threshold
 (`[0x…08b547cc]` vs `[0x…08bcb310]`) and a lock (`ldxr`/`casa`/`wfe` on
 `0x…08c57470`) — a synchronization/rendezvous primitive that never reaches its
 condition on our minimal machine. The functions are called through PAC'd vtables
-and reference no strings, so they are not named yet. **Next:** identify this sync
-primitive (what the counter/threshold mean and who should set the flag — likely a
-stubbed coprocessor completion, e.g. RTC/SMC/AOP, or an AIC-routed device IRQ), then
-satisfy it. 4 GB boot is also slow under TCG.
+and reference no strings, so they are not named yet. Runtime values at the stall
+(gdbstub): flag `[0x…08bcb550] = 0`, `[0x…08b547cc] = 2`, threshold
+`[0x…08bcb310] = 1` → `2 < 1` is false, so `do_work` (which stores the flag) never
+runs. The counter-writer computes `popcount` of a mask at `0x…08b547c8`, but that
+word read `0xffffffff` (a `-1`/"none" sentinel, popcount 32 ≠ 2), so it is **not** a
+clean 2-CPU mask and the struct is not fully understood. The threshold is a
+widely-read global (~15 readers) set by `0x…0783dd14`. **Next (focused RE):**
+cross-reference these global offsets (`0x…08bcb300/310/518/548/550`,
+`0x…08b547c8/cc`, lock `0x…08c57470`) against XNU open source to name this
+primitive (likely `osfmk/kern` or `osfmk/arm64`), which reveals who should set the
+flag, then supply it — a stubbed-coprocessor completion (RTC/SMC/AOP mailbox), an
+AIC-routed device IRQ, or a second CPU (the DT has two `apple,tempest` nodes and
+CPU1 never leaves the reset vector). 4 GB boot is also slow under TCG.
 
 ### How to diagnose a boot crash
 
