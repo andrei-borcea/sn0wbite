@@ -74,6 +74,22 @@
 # aop-gpio with it off; revisit once all interrupt-controller phandles register). Debug is
 # now fast via the live console.
 #
+# Driver bring-up (this revision, after the console/AIC breakthrough): the IOKit
+# interrupt resolver no-op is now REMOVED -- with /arm-io kept and the AIC
+# registered, real IODeviceTree interrupt resolution works (the no-op had
+# starved interrupt-driven drivers, e.g. AppleSamsungSerial crashed on a NULL
+# interrupt at 0x7d6346c). ApplePMGR::initDriver is bypassed by marking all 14
+# PMGR bridges optional (optional-bridge-mask=0x3fff). AppleStockholmControl
+# (NFC leaf, absent HW) is dropped via REM_NAMES "stockholm". The console node
+# dockchannel-uart is given channel-number=0 so the IOKit AppleDockChannel
+# driver (which also matches it by device_type) doesn't panic "Invalid
+# channel-number". Boot now runs through corecrypto/FIPS, AppleT8006IO (chip-rev
+# B1), I2C i2c1/i2c3, the AIC, AppleSSE, AppleT8006PlatformErrorHandler and
+# AppleARMLightEmUp, stopping at ApplePMGRMTRSensor::agingPerfStateTVMRegister
+# (ApplePMGR.cpp:107 "perfStateNb > 0") -- a PMGR thermal/perf-state sensor
+# extra (next: skip or feed perf-state data). Strategy: skip non-essential
+# sensors/peripheral drivers now (closed kexts + absent HW), re-enable later.
+#
 diff --git a/hw/arm/apple_a13.c b/hw/arm/apple_a13.c
 index d304c75..7d172bd 100644
 --- a/hw/arm/apple_a13.c
@@ -263,7 +279,7 @@ index 0000000..2cc4d2c
 +    define_one_arm_cp_reg(cpu, &aprr_el1);
 +}
 diff --git a/hw/arm/t8030.c b/hw/arm/t8030.c
-index fd0ce37..fc9c7a8 100644
+index fd0ce37..95431c9 100644
 --- a/hw/arm/t8030.c
 +++ b/hw/arm/t8030.c
 @@ -38,6 +38,7 @@
@@ -287,7 +303,7 @@ index fd0ce37..fc9c7a8 100644
  #define T8030_DRAM_SIZE         (4 * GiB)
  
  /*
-@@ -137,6 +144,111 @@ static void t8030_start_cpus(MachineState* machine, uint64_t cpu_mask)
+@@ -137,6 +144,123 @@ static void t8030_start_cpus(MachineState* machine, uint64_t cpu_mask)
      }
  }
  
@@ -370,6 +386,18 @@ index fd0ce37..fc9c7a8 100644
 +    if (node == NULL) {
 +        return;
 +    }
++    /*
++     * sn0w T8006: the dockchannel-uart node (our pexpert console) lacks a
++     * "channel-number" property (unlike dockchannel-diags=1 / dockchannel-rtp=0),
++     * so the IOKit AppleDockChannel driver that also matches it (by
++     * device_type "dockchannel") panics with "Invalid channel-number". Give it
++     * channel 0 (the uart channel) so the driver's start succeeds; the pexpert
++     * polled console is unaffected.
++     */
++    if (find_dtb_prop(node, "channel-number") == NULL) {
++        uint32_t chan = 0;
++        set_dtb_prop(node, "channel-number", 4, &chan);
++    }
 +    prop = find_dtb_prop(node, "reg");
 +    assert(prop != NULL && prop->length >= 4 * sizeof(hwaddr));
 +    reg = (hwaddr *)prop->value;
@@ -399,7 +427,7 @@ index fd0ce37..fc9c7a8 100644
  static void t8030_create_s3c_uart(const T8030MachineState *tms, uint32_t port,
                                    Chardev *chr)
  {
-@@ -174,6 +286,33 @@ static void t8030_patch_kernel(struct mach_header_64 *hdr)
+@@ -174,6 +298,38 @@ static void t8030_patch_kernel(struct mach_header_64 *hdr)
  {
      //disable_kprintf_output = 0
      // *(uint32_t *)vtop_static(0xFFFFFFF0077142C8) = 0;
@@ -427,13 +455,18 @@ index fd0ce37..fc9c7a8 100644
 +     * expect a later consequence -- this only unblocks to reach the next milestone.
 +     *   movz w0, #1  (0x52800020) ; ret (0xd65f03c0)
 +     */
-+    *(uint32_t *)vtop_static(0xFFFFFFF007D2B5B4) = 0x52800020;
-+    *(uint32_t *)vtop_static(0xFFFFFFF007D2B5B8) = 0xd65f03c0;
++    /* sn0w: resolver no-op DISABLED now that /arm-io survives and the AIC
++     * registers -- real IODeviceTree interrupt resolution should work, and the
++     * no-op was starving interrupt-driven drivers (AppleSamsungSerial got a NULL
++     * interrupt and crashed at 0x7d6346c). If it crashes on an unregistered
++     * controller phandle, keep that controller's node (don't strip it). */
++    /* *(uint32_t *)vtop_static(0xFFFFFFF007D2B5B4) = 0x52800020; */
++    /* *(uint32_t *)vtop_static(0xFFFFFFF007D2B5B8) = 0xd65f03c0; */
 +
      kpf();
  }
  
-@@ -480,9 +619,14 @@ static void t8030_memory_setup(MachineState *machine)
+@@ -480,9 +636,14 @@ static void t8030_memory_setup(MachineState *machine)
  
      nvram = APPLE_NVRAM(qdev_find_recursive(sysbus_get_default(), "nvram"));
      if (!nvram) {
@@ -451,7 +484,7 @@ index fd0ce37..fc9c7a8 100644
      apple_nvram_load(nvram);
  
      fprintf(stderr, "boot_mode: %u\n", tms->boot_mode);
-@@ -521,6 +665,7 @@ static void t8030_memory_setup(MachineState *machine)
+@@ -521,6 +682,7 @@ static void t8030_memory_setup(MachineState *machine)
      if (apple_nvram_serialize(nvram, info->nvram_data, sizeof(info->nvram_data)) < 0) {
          error_report("%s: Failed to read NVRAM", __func__);
      }
@@ -459,7 +492,7 @@ index fd0ce37..fc9c7a8 100644
  
      if (tms->ticket_filename) {
          if (!g_file_get_contents(tms->ticket_filename, &info->ticket_data, (gsize *)&info->ticket_length, NULL)) {
-@@ -561,6 +706,21 @@ static void t8030_memory_setup(MachineState *machine)
+@@ -561,6 +723,21 @@ static void t8030_memory_setup(MachineState *machine)
          tms->panic_size = panic_size;
      }
  
@@ -481,7 +514,7 @@ index fd0ce37..fc9c7a8 100644
      DTBNode *vram = find_dtb_node(tms->device_tree, "vram");
      if (vram) {
          uint64_t vram_reg[2] = { 0 };
-@@ -725,6 +885,14 @@ static void t8030_cpu_setup(MachineState *machine)
+@@ -725,6 +902,14 @@ static void t8030_cpu_setup(MachineState *machine)
              continue;
          }
  
@@ -496,7 +529,7 @@ index fd0ce37..fc9c7a8 100644
          tms->cpus[i] = apple_a13_cpu_create(node);
          cluster_id = tms->cpus[i]->cluster_id;
  
-@@ -752,6 +920,23 @@ static void t8030_create_aic(MachineState *machine)
+@@ -752,6 +937,23 @@ static void t8030_create_aic(MachineState *machine)
      timebase = find_dtb_node(soc, "aic-timebase");
      assert(timebase);
  
@@ -520,7 +553,32 @@ index fd0ce37..fc9c7a8 100644
      tms->aic = apple_aic_create(machine->smp.cpus, child, timebase);
      object_property_add_child(OBJECT(machine), "aic", OBJECT(tms->aic));
      assert(tms->aic);
-@@ -1682,6 +1867,21 @@ static void t8030_machine_init(MachineState *machine)
+@@ -787,6 +989,24 @@ static void t8030_pmgr_setup(MachineState* machine)
+     child = find_dtb_node(child, "pmgr");
+     assert(child != NULL);
+ 
++    /*
++     * sn0w T8006 (bring-up): ApplePMGR::initDriver panics
++     * (ApplePMGR.cpp:860 "REQUIRE failed: _optionalBridges & (0x1 << i)") on a
++     * mandatory PMGR "bridge" that it treats as not-set-up. The node declares
++     * #bridges=14 with optional-bridge-mask=0x322 (only bridges 1,5,8,9
++     * optional); the driver rejects a mandatory bridge WITHOUT reading its MMIO
++     * (ruled out: all 14 bridge reg ranges exist and are covered by the arm-io
++     * ranges), so the exact per-bridge presence test is still unidentified
++     * (ApplePMGR is a closed kext). Mark all 14 bridges optional so the REQUIRE
++     * passes and boot proceeds; the power-domain bridge counters are not needed
++     * to reach the console/display milestones. TODO: find the real presence
++     * check and provide the bridge properly instead of masking.
++     */
++    {
++        uint32_t all_optional = 0x3fff; /* bits 0..13 for #bridges = 14 */
++        set_dtb_prop(child, "optional-bridge-mask", 4, &all_optional);
++    }
++
+     prop = find_dtb_prop(child, "reg");
+     assert(prop);
+ 
+@@ -1682,6 +1902,21 @@ static void t8030_machine_init(MachineState *machine)
  
      if (tms->rtbuddyv2_protocol_version == 0) {
          switch (BUILD_VERSION_MAJOR(build_version)) {
@@ -542,7 +600,7 @@ index fd0ce37..fc9c7a8 100644
              case 13:
                  tms->rtbuddyv2_protocol_version = 10;
                  break;
-@@ -1712,6 +1912,15 @@ static void t8030_machine_init(MachineState *machine)
+@@ -1712,6 +1947,15 @@ static void t8030_machine_init(MachineState *machine)
                                                  &tms->bootinfo.trustcache_size);
      data = 24000000;
      set_dtb_prop(tms->device_tree, "clock-frequency", 4, &data);
@@ -558,7 +616,7 @@ index fd0ce37..fc9c7a8 100644
      child = find_dtb_node(tms->device_tree, "arm-io");
      assert(child != NULL);
  
-@@ -1773,49 +1982,59 @@ static void t8030_machine_init(MachineState *machine)
+@@ -1773,49 +2017,59 @@ static void t8030_machine_init(MachineState *machine)
  
      t8030_create_aic(machine);
  
@@ -642,7 +700,7 @@ index fd0ce37..fc9c7a8 100644
      tms->init_done_notifier.notify = t8030_machine_init_done;
      qemu_add_machine_init_done_notifier(&tms->init_done_notifier);
 diff --git a/hw/arm/xnu.c b/hw/arm/xnu.c
-index 2ca4983..12fb605 100644
+index 2ca4983..cc78a2b 100644
 --- a/hw/arm/xnu.c
 +++ b/hw/arm/xnu.c
 @@ -37,12 +37,25 @@
@@ -671,7 +729,7 @@ index 2ca4983..12fb605 100644
      "aic,1\0$",
      "pmgr1,s8000\0$",
      "pmgr1,t8030\0$",
-@@ -74,7 +87,9 @@ static const char *KEEP_COMP[] = {
+@@ -74,9 +87,15 @@ static const char *KEEP_COMP[] = {
  
  static const char *REM_NAMES[] = {
      "backlight\0$",
@@ -681,7 +739,13 @@ index 2ca4983..12fb605 100644
 +     * the kernel with no console (it does NOT fall back to the Samsung uart0). */
      "sep\0$", "pmp\0$",
      "aop-gpio\0$",
++    /* sn0w T8006: drop leaf drivers for peripheral HW we don't model, so IOKit
++     * matching doesn't start them and crash on absent providers. stockholm =
++     * NFC (AppleStockholmControl derefs a NULL provider at IOKit 0x7d6346c). */
++    "stockholm\0$",
      "dotara\0$", "baseband-spmi\0$", "stockholm-spmi\0$",
+     "dart-aop\0$", "dart-pmp\0$", "dart-sep\0$", "dart-rsm\0$",
+     "dart-scaler\0$", "dart-jpeg0\0$", "dart-jpeg1\0$",
 diff --git a/include/hw/arm/sn0w_cpu.h b/include/hw/arm/sn0w_cpu.h
 new file mode 100644
 index 0000000..d5dbc6d
