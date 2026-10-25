@@ -21,9 +21,13 @@ README for the porting guide.
    registers" scope item becomes on the QEMU path. Registers the kernel reads
    back are then *promoted* from RAZ/WI to real definitions: so far the **APRR**
    permission-remap pair `APRR_EL0`/`APRR_EL1` (`S3_4_C15_C2_0`/`_1`), which
-   `sn0w_cpu_install_apple_aprr()` seeds with their arch defaults so XNU's pmap
-   PPL/xPRR consistency check passes (the A13 core models only the A14-style
-   SPRR encodings at `opc1=6`; APRR is the older `opc1=4` pair).
+   `sn0w_cpu_install_apple_aprr()` gives genuine **read/write** backing
+   (`CPUARMState.sprr.aprr_el[]`, a one-field `target/arm/cpu.h` add), seeded to
+   their arch defaults. R/W (not CONST) is required because the kernel reads them
+   back twice: XNU's pmap PPL/xPRR check wants the defaults, and the PPL call gate
+   toggles `APRR_EL1` to the PPL-writable value and verifies the readback. (The
+   A13 core models only the A14-style SPRR encodings at `opc1=6`; APRR is the
+   older `opc1=4` pair.)
 3. **Minimal boot-to-console machine** (`t8030.c`): skip the coprocessor device
    creates (ANS/SART/SMC/SIO/SPMI/PMU/USB/DART/GPIO/I2C/display) that assert on
    the T8006 DeviceTree, and make the `nvram` device optional in
@@ -54,15 +58,19 @@ README for the porting guide.
   on the empty arrays for the AIC phandle `0x10`. Bring-up tolerant no-op of the
   resolver (`movz w0,#1; ret`) gets past it; interrupts are not routed (clean AIC
   registration still pending). See [build & boot](../../../docs/watchos/qemu-build-and-boot.md).
-- **pmap APRR consistency check fixed**: the next panic, `"%s: modifying a PPL
-  mapping …"` in `__PPLTEXT` (`0x…08b22650`, REA `ev_87531d34`), was a check that
-  re-reads `APRR_EL0`/`APRR_EL1` (`S3_4_C15_C2_0/1`) on every mapping and demands
-  the arch defaults; our RAZ/WI made them read 0. Promoted via
-  `sn0w_cpu_install_apple_aprr()` (item 2). Boot now advances through pmap.
-- **Current blocker**: `panic("ppl_dispatch: failed due to bad arguments/state")`
-  (fmt `0x…08b83130`, via the panic trampoline `0x…08b1af1c`). The GXF/PPL call
-  gate (`genter`/guarded mode) rejects a PPL dispatch — next to decompile
-  (dispatch index/args + the fork's `apple_a13_gxf.c` guarded path). Still upstream
-  of `serial_init`.
+- **pmap APRR check + ppl_dispatch fixed (APRR made R/W)**: two panics,
+  `"%s: modifying a PPL mapping …"` (`0x…08b22650`, REA `ev_87531d34`) and
+  `"ppl_dispatch: failed due to bad arguments/state"` (`0x…08b83130`), both came
+  from the kernel reading back `APRR_EL0`/`APRR_EL1` (`S3_4_C15_C2_0/1`): the pmap
+  check demands the arch defaults, and the PPL call gate (`0x…08b33fe0`, no
+  `genter` — this kernel has no GXF) writes `APRR_EL1` to the PPL-writable value
+  then verifies the readback. RAZ/WI (and then CONST) failed both; making the pair
+  genuine R/W (item 2) clears both. PPL routines now execute.
+- **Current blocker**: APRR **MMU permission-remap** is unimplemented. PPL runs but
+  spins in a Data-Abort loop (ESR `0x9600004f`, write perm fault L3) when `bzero`/
+  `dc zva` zeroes a freshly allocated PPL page: those pages are mapped raw-`RO` and
+  rely on APRR remapping them `RW` while in PPL mode. The core remaps only for the
+  A14 SPRR path (`ptw.c`), never APRR. Fix: add an APRR remap path driven by
+  `env->sprr.aprr_el[]`. Still upstream of `serial_init`.
 
 Apply: `cd qemu-t8030 && git apply <this>/t8006-adaptation.patch` then rebuild.

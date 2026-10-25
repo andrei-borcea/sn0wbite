@@ -57,24 +57,29 @@ void sn0w_cpu_install_apple_aprr(ARMCPU *cpu)
 {
     /*
      * APRR_EL0 (S3_4_C15_C2_0) and APRR_EL1 (S3_4_C15_C2_1): the Apple
-     * A11..A13 / S4-S5 "Access Protection Remap Registers". They hold two
-     * 16-entry x 4-bit permission-index tables. The A13 QEMU core models only
-     * the A14-style SPRR encodings (opc1=6); the Tempest/S5 watchOS kernel
-     * instead programs these APRR registers (opc1=4), and on every pmap
-     * protection update it re-reads them and panics -- "modifying a PPL
-     * mapping" / "creating an xPRR mapping" -- unless they still hold the exact
-     * architectural defaults it wrote during early CPU bring-up. The blanket
-     * RAZ/WI absorbed the writes but then read back 0, tripping that
-     * consistency check on the very first mapping.
+     * A11..A13 / S4-S5 "Access Protection Remap Registers", two 16-entry x
+     * 4-bit permission-index tables. The A13 QEMU core models only the
+     * A14-style SPRR encodings (opc1=6); the Tempest/S5 kernel instead programs
+     * these APRR registers (opc1=4), so this core must model the pair.
      *
-     * Return the defaults the kernel writes and verifies:
-     *   APRR_EL0 = 0x4545010167670101   APRR_EL1 = 0x4455445566666677
-     * Writes stay ignored, which is safe here: the kernel only ever stores
-     * these same constants (the check hardcodes them, so they are invariant),
-     * and SPRR-based MMU remapping is never enabled on this core -- no remap
-     * table is consulted during translation, so the PTE AP/XN/PXN bits keep
-     * their architectural meaning. ARM_CP_OVERRIDE lets these two definitions
-     * replace the blanket RAZ/WI for their own encodings.
+     * They are REAL read/write state (backed by env->sprr.aprr_el[]), not
+     * constants -- the kernel both writes and reads them back:
+     *   - pmap protection updates re-read them and panic ("modifying a PPL
+     *     mapping" / "creating an xPRR mapping") unless they hold the arch
+     *     defaults APRR_EL0 = 0x4545010167670101, APRR_EL1 = 0x4455445566666677.
+     *   - the PPL call gate, on entry, writes APRR_EL1 = 0x4455405566666677
+     *     (the default with the index-10 nibble toggled to make PPL pages
+     *     writable), ISB, then reads it back and panics "ppl_dispatch: failed
+     *     due to bad arguments/state" unless the readback matches; it restores
+     *     the default on exit. A write-ignored constant fails that readback --
+     *     which is why these must be R/W, not ARM_CP_CONST.
+     * The default and the PPL-mode value differ only at APRR index 10, which the
+     * pmap check exempts (its allowed-index mask is 0x440 = bits 6 and 10), so a
+     * single R/W register satisfies both the pmap check and the PPL gate. SPRR-
+     * based MMU remapping is never enabled on this core, so the PTE AP/XN/PXN
+     * bits keep their architectural meaning regardless. resetvalue seeds the
+     * defaults for any reader that runs before the kernel's first write;
+     * ARM_CP_OVERRIDE lets these replace the blanket RAZ/WI for their encodings.
      */
     ARMCPRegInfo aprr_el0 = {
         .name = "APRR_EL0",
@@ -82,8 +87,9 @@ void sn0w_cpu_install_apple_aprr(ARMCPU *cpu)
         .opc0 = 3, .opc1 = 4, .crn = 15, .crm = 2, .opc2 = 0,
         .state = ARM_CP_STATE_AA64,
         .access = PL1_RW,
-        .type = ARM_CP_CONST | ARM_CP_OVERRIDE,
+        .type = ARM_CP_OVERRIDE,
         .resetvalue = 0x4545010167670101ULL,
+        .fieldoffset = offsetof(CPUARMState, sprr.aprr_el[0]),
     };
     ARMCPRegInfo aprr_el1 = {
         .name = "APRR_EL1",
@@ -91,8 +97,9 @@ void sn0w_cpu_install_apple_aprr(ARMCPU *cpu)
         .opc0 = 3, .opc1 = 4, .crn = 15, .crm = 2, .opc2 = 1,
         .state = ARM_CP_STATE_AA64,
         .access = PL1_RW,
-        .type = ARM_CP_CONST | ARM_CP_OVERRIDE,
+        .type = ARM_CP_OVERRIDE,
         .resetvalue = 0x4455445566666677ULL,
+        .fieldoffset = offsetof(CPUARMState, sprr.aprr_el[1]),
     };
     define_one_arm_cp_reg(cpu, &aprr_el0);
     define_one_arm_cp_reg(cpu, &aprr_el1);

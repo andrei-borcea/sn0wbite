@@ -65,14 +65,19 @@ That is the whole extension surface for the CPU side.
   CPU table (step 1) — the override makes it win. Most IMPDEF traffic at boot is
   one-way config writes, for which RAZ/WI is correct and enough.
   - The S5 port's first such case is the **APRR** permission-remap pair
-    `APRR_EL0`/`APRR_EL1` (`S3_4_C15_C2_0`/`_1`): XNU's pmap re-reads them on
-    *every* protection update and panics ("modifying a PPL mapping") unless they
-    still hold the arch defaults it wrote at bring-up. Under blanket RAZ/WI they
-    read 0 and the check trips on the first mapping. `sn0w_cpu_install_apple_aprr()`
-    promotes exactly those two encodings to constants returning
-    `0x4545010167670101` / `0x4455445566666677`, so the check passes. (The A13
-    core only models the A14-style **SPRR** encodings at `opc1=6`; APRR is the
-    older `opc1=4` pair the Tempest kernel uses.)
+    `APRR_EL0`/`APRR_EL1` (`S3_4_C15_C2_0`/`_1`), and it is a textbook
+    write-then-read-back register, so RAZ/WI is *not* enough. XNU's pmap re-reads
+    them on *every* protection update and panics ("modifying a PPL mapping")
+    unless they hold the arch defaults; and the PPL call gate writes `APRR_EL1`
+    to its PPL-writable value then reads it back and panics ("ppl_dispatch:
+    failed …") on a mismatch. A write-ignored constant passes the first and fails
+    the second. `sn0w_cpu_install_apple_aprr()` therefore gives the two encodings
+    genuine **read/write** backing (a `uint64_t sprr.aprr_el[2]` field in
+    `CPUARMState`, seeded to `0x4545010167670101` / `0x4455445566666677`), so both
+    readbacks see what the kernel wrote. (The A13 core only models the A14-style
+    **SPRR** encodings at `opc1=6`; APRR is the older `opc1=4` pair the Tempest
+    kernel uses. Note: APRR *MMU permission remapping* is a separate, still-open
+    piece — see the build-and-boot doc.)
 - This is the **QEMU full-system path**, which runs FEAT_PAuth and the 16 KB
   granule natively, so the kernel's 331,911 PAC sites need **no** patching here.
   The separate Unicorn harness (no PAC) is where the bulk PAC-strip applies.

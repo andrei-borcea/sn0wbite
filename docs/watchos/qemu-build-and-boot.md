@@ -170,14 +170,43 @@ just those two encodings (SPRR-based MMU remapping is never enabled on this core
 so the PTE AP/XN/PXN bits keep their architectural meaning — no remap table is
 consulted). The pmap panic is gone and boot advances through pmap.
 
-### Current blocker: ppl_dispatch (GXF/PPL call gate)
+### ppl_dispatch: the PPL call gate's APRR readback — RESOLVED
 
-Boot now reaches `panic("ppl_dispatch: failed due to bad arguments/state")` (fmt
-`0x…08b83130`, reached via the generic panic trampoline `0x…08b1af1c`, caught with
-a gdbstub breakpoint there). `ppl_dispatch` is the GXF (`genter`/guarded-mode) gate
-that runs a PPL routine; "bad arguments/state" means the PPL entry rejected the
-dispatch. Next piece to decompile: the dispatch index/args and the fork's
-GXF/`arm_is_guarded` path (`apple_a13_gxf.c`). Console is still upstream.
+Past the pmap check, boot hit `panic("ppl_dispatch: failed due to bad
+arguments/state")` (fmt `0x…08b83130`, via the panic trampoline `0x…08b1af1c`).
+`ppl_dispatch` is a trampoline table (`0x…077f00a8`: `mov x15,<routine>; b
+0x…07df6444`) into a common gate `0x…07df6444`. When PPL is locked down
+(`__PPLDATA+0x188 != 0`) the gate jumps to the `__PPLTEXT` entry `0x…08b33fe0`,
+which — note, **no `genter`**; this S5 kernel has no GXF instructions — enters PPL
+mode purely by **writing `APRR_EL1` (`S3_4_C15_C2_1`) to the PPL-writable value
+`0x4455405566666677`**, `isb`, then **reading it back and comparing**; a mismatch
+takes the `x15=2` path that panics. Our first APRR fix made `APRR_EL1` an
+`ARM_CP_CONST` (writes ignored), so the readback returned the default and the gate
+failed. Fix: the APRR registers are now **real read/write** state
+(`CPUARMState.sprr.aprr_el[]`, `sn0w_cpu_install_apple_aprr`), so the gate's write
+sticks and the readback matches. The default and the PPL-mode value differ only at
+APRR index 10, which the pmap check exempts (mask `0x440`), so one R/W register
+satisfies both. ppl_dispatch now succeeds and PPL routines execute.
+
+### Current blocker: APRR MMU permission-remap unimplemented (PPL page RO write-fault loop)
+
+With PPL routines running, boot spins on a **Data Abort loop** (no panic): ESR
+`0x9600004f` = write **permission fault, level 3**, FAR in the physmap aperture
+(`0xffffffe066808000` / `…c000`), faulting PC `0x…07df30e0`/`…3108` inside
+`bzero`/`memset` (`stp x1,x1,[x0]` then `dc zva,x3`, `x1=0`). The abort vector
+(`0x…07df4000`) handles and retries the same instruction → infinite loop. Root
+cause: PPL maps its protected pages (page-table pages, pmap/pv structures) with raw
+`AP = RO` and relies on the **APRR permission remap** to make them writable *while
+in PPL mode* (that is exactly what toggling `APRR_EL1` index 10 means). The A13
+QEMU core implements remap only for the A14-style **SPRR** path (`ptw.c
+pte_to_sprr_prot_is_guarded`, gated by `arm_is_sprr_enabled`), never for **APRR**,
+so translation uses the raw RO bits and PPL's zeroing of a freshly allocated PPL
+page write-faults. **Next (the real fix):** implement APRR remap in `ptw.c` —
+mirror the SPRR path but drive it from `env->sprr.aprr_el[]` (EL1 table for EL1
+accesses, EL0 for EL0), decoding each PTE's 4-bit index `((AP<<2)|(XN<<1)|PXN)` to
+effective R/W/X, with a TLB flush when `APRR_EL1` changes. First establish the
+enable condition (APCTL `S3_4_C15_C1_0`, currently RAZ/WI) and the attr→prot decode
+from the kernel. Console is still upstream.
 
 ### How to diagnose a boot crash
 
