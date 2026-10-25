@@ -74,12 +74,19 @@ README for the porting guide.
   indices writable, so the write-grant is the "PPL mode" state itself; `ptw.c` now
   grants EL1 R/W to EL1-RO non-exec pages. PPL writes succeed; boot runs through PPL
   and VM init.
-- **Current blocker**: **interrupt delivery + secondary CPU** (the bypassed AIC).
-  Boot reaches early SMP/platform init and timer-wait/idle loops (`0x…0784aca8`),
-  but CPU0 cycles there and **CPU1 never leaves the reset vector** — because the
-  interrupt resolver is no-op'd and the AIC skipped, so no timer IRQ/IPI is
-  delivered and the scheduler/timed waits never advance. `console_init` is further
-  on. Next phase: bring up the AIC (timer IRQ, then IPIs / CPU1 start). Still
-  upstream of `serial_init`.
+- **Physical-timer FIQ delivery fixed**: boot reaches the **scheduler / idle
+  thread** (`0x…0784aca8`) but the timer interrupt was never delivered —
+  `apple_a13.c` wired only the virtual timer (`GTIMER_VIRT`) to the FIQ, while
+  watchOS drives the **physical** timer (`CNTP`; gdbstub: `CNTP_CTL_EL0=0x5`,
+  `CNTV_CTL_EL0=0`). Wired `GTIMER_PHYS` to the FIQ OR-gate; verified the FIQ
+  vector (`VBAR+0x300=0x…07df4100`) now fires.
+- **Current blocker**: the **bootstrap thread does not progress** (still no
+  console). The scheduler is up and the idle thread runs, but the thread that would
+  run `console_init`/IOKit never becomes runnable (not a CPU1 wait — `-smp 1`
+  stalls the same; CPU1 just parks at the reset vector). It is blocked on a
+  stubbed/missing device or a completion that never arrives (coprocessors skipped,
+  interrupt resolver no-op'd → only the per-CPU timer FIQ is wired, no AIC-routed
+  device IRQs). Next: trace what the non-idle thread blocks on and provide that
+  completion (likely AIC-routed interrupt delivery). Still upstream of `serial_init`.
 
 Apply: `cd qemu-t8030 && git apply <this>/t8006-adaptation.patch` then rebuild.

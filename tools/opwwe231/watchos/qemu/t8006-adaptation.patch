@@ -1,16 +1,17 @@
 # sn0wbite T8006 adaptation of the qemu-t8030 fork. Apply: cd qemu-t8030 && git apply <this>; build;
 # run with -smp 2. See docs/watchos/qemu-build-and-boot.md. Covers: A13 CPU node optional for
 # Tempest(S5); sn0w CPU layer sn0w_cpu.{c,h}: RAZ/WI Apple IMPDEF(op0=3,CRn=15) + real R/W APRR_EL0/EL1
-# (S3_4_C15_C2_0/1, backed by CPUARMState.sprr.aprr_el[]) so the pmap PPL/xPRR check AND the PPL call
-# gate's APRR readback pass; a bring-up APRR MMU write-grant in ptw.c (EL1 read-only non-exec pages ->
-# R/W) so PPL can write its protected pages; minimal machine (coprocessors skipped, nvram optional,
-# 4 GB DRAM kept -- do NOT shrink, top-of-DRAM firmware regions must stay backed); DT timebase-frequency
-# + load-time seed of gPEClockFrequencyInfo=24MHz; KEEP_COMP += apple,tempest; tolerant no-op of the
-# IODeviceTree interrupt resolver. Boot: early-asm -> pmap -> PPL -> VM init -> early SMP/cpu init
-# (reaches timer-wait/idle loops); next blocker = interrupt delivery (AIC bypassed) + secondary CPU start.
+# (S3_4_C15_C2_0/1, CPUARMState.sprr.aprr_el[]) so the pmap PPL/xPRR check AND the PPL gate readback
+# pass; a bring-up APRR MMU write-grant in ptw.c (EL1 RO non-exec pages -> R/W) so PPL can write its
+# pages; GTIMER_PHYS wired to the CPU FIQ (apple_a13.c) -- watchOS uses the physical timer, the fork
+# wired only the virtual one, so the timer FIQ was never delivered; minimal machine (coprocessors
+# skipped, nvram optional, 4 GB DRAM kept -- do NOT shrink); DT timebase + load-time seed of
+# gPEClockFrequencyInfo; KEEP_COMP += apple,tempest; tolerant no-op of the IODeviceTree interrupt
+# resolver. Boot: early-asm -> pmap -> PPL -> VM init -> scheduler starts, idle thread runs; next
+# blocker = the bootstrap thread does not progress (no console yet) -- a scheduler/thread-block issue.
 #
 diff --git a/hw/arm/apple_a13.c b/hw/arm/apple_a13.c
-index d304c75..631339d 100644
+index d304c75..7d172bd 100644
 --- a/hw/arm/apple_a13.c
 +++ b/hw/arm/apple_a13.c
 @@ -9,6 +9,7 @@
@@ -40,7 +41,21 @@ index d304c75..631339d 100644
  }
  
  static void apple_a13_realize(DeviceState *dev, Error **errp)
-@@ -635,8 +646,7 @@ AppleA13State *apple_a13_cpu_create(DTBNode *node)
+@@ -586,6 +597,13 @@ static void apple_a13_realize(DeviceState *dev, Error **errp)
+ 
+     qdev_connect_gpio_out(dev, GTIMER_VIRT, qdev_get_gpio_in(fiq_or, 0));
+     tcpu->fast_ipi = qdev_get_gpio_in(fiq_or, 1);
++    /* sn0w: the watchOS S5 kernel drives the PHYSICAL generic timer (CNTP,
++     * cntp_ctl_el0) for rtclock; the fork wired only the virtual timer (CNTV)
++     * to the FIQ. Route GTIMER_PHYS into the FIQ OR as well, otherwise the
++     * kernel's timer interrupt is never delivered and its timed waits / idle
++     * loop never advance (CPU0 spins reading cntpct_el0). iOS used CNTV;
++     * watchOS 6.3.1 uses CNTP. */
++    qdev_connect_gpio_out(dev, GTIMER_PHYS, qdev_get_gpio_in(fiq_or, 2));
+ }
+ 
+ static void apple_a13_reset(DeviceState *dev)
+@@ -635,8 +653,7 @@ AppleA13State *apple_a13_cpu_create(DTBNode *node)
      tcpu->phys_id = *(unsigned int*)prop->value;
  
      prop = find_dtb_prop(node, "cluster-id");
@@ -50,7 +65,7 @@ index d304c75..631339d 100644
  
      mpidr = 0LL | tcpu->phys_id | (1LL << 31);
  
-@@ -647,7 +657,7 @@ AppleA13State *apple_a13_cpu_create(DTBNode *node)
+@@ -647,7 +664,7 @@ AppleA13State *apple_a13_cpu_create(DTBNode *node)
      cpu->midr = FIELD_DP64(cpu->midr, MIDR_EL1, REVISION, 0x1);
  
      prop = find_dtb_prop(node, "cluster-type");

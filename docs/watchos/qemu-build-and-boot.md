@@ -212,21 +212,35 @@ the (emulation-irrelevant) PPL write-protection. No TLB-flush/mode tracking need
 Result: the loop is gone, PPL writes succeed, boot runs through PPL and VM init.
 (A faithful per-index APRR remap remains a TODO.)
 
-### Current blocker: interrupt delivery + secondary CPU (the bypassed AIC)
+### Physical-timer FIQ delivery — FIXED
 
-Past PPL/VM init, boot reaches **early SMP / platform init and timer-wait/idle
-loops** (`0x…0784aca8`, which reads `cntpct_el0`, arms a deadline via
-`0x…0784740c`, and loops on a processor-state field) — but makes no visible
-progress and prints no console. Both-CPU sampling (QEMU monitor `info registers
--a`): **CPU0** cycles in these early-init/idle waits, **CPU1 never leaves the reset
-vector** (`0x805df8000`). Root cause: we earlier **no-op'd the IODeviceTree
-interrupt resolver and skipped the AIC** device, so **no interrupts are delivered**
-(no timer tick, no IPI) and the **secondary CPU is never started**. The kernel's
-timed waits and scheduler therefore never advance, and `console_init` (further on)
-is not reached. 4 GB boot is also slow under TCG. **Next (the real next phase):**
-bring up interrupt delivery — model/wire the **AIC** (timer IRQ at minimum, then
-IPIs) so timer interrupts fire and CPU1 can be started. This is the clean AIC fix
-deferred twice; it is the gate to a live, console-producing boot.
+Past PPL/VM init, boot reaches the **scheduler** and runs the **idle thread**
+(`0x…0784aca8`: reads `cntpct_el0`, arms a deadline via `0x…0784740c`, saves
+context through `0x…07dfc920` → `0x…07dfd260`, loops on a processor-state field).
+It made no visible progress because the **timer interrupt was never delivered**:
+`apple_a13.c` wired only the **virtual** generic timer (`GTIMER_VIRT`) to the CPU
+FIQ, but the watchOS S5 kernel drives the **physical** timer (`CNTP`,
+`cntp_ctl_el0`; gdbstub showed `CNTP_CTL_EL0 = 0x5` = enabled, unmasked, ISTATUS=1,
+and `CNTV_CTL_EL0 = 0`). Fix: wire `GTIMER_PHYS` into the FIQ OR-gate as well.
+Verified: a breakpoint on the FIQ vector (`VBAR_EL1+0x300 = 0x…07df4100`, with
+`VBAR_EL1 = 0x…07df3e00`) now **fires** — the timer FIQ is taken.
+
+### Current blocker: the bootstrap thread does not progress (no console yet)
+
+With the timer FIQ delivered, CPU0 still sits in the **idle thread** and prints no
+console. Both-CPU sampling (QEMU monitor `info registers -a`) shows CPU0 cycling in
+the idle/scheduler loop and **CPU1 parked at the reset vector** (`0x805df8000`) —
+but this is **not** a CPU1 wait: `-smp 1` stalls identically. So the scheduler is
+up and the idle thread runs, but the **bootstrap thread** (which would run
+`console_init`, IOKit, and the rest) never makes progress — it is blocked and
+nothing makes it runnable, so the idle loop spins forever and no console banner is
+printed. Likely causes: the bootstrap thread is blocked on a stubbed/missing device
+or a completion/interrupt that never arrives (we skipped the coprocessors and
+no-op'd the IODeviceTree interrupt resolver, so only the per-CPU timer FIQ is
+wired — AIC-routed device interrupts are not). **Next:** find what the bootstrap
+thread is blocked on (trace the non-idle thread / the last `thread_block`), then
+provide that completion — most likely by bringing up **AIC-routed interrupt
+delivery** for the device(s) it waits on. 4 GB boot is also slow under TCG.
 
 ### How to diagnose a boot crash
 
