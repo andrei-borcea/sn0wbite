@@ -64,6 +64,15 @@ That is the whole extension surface for the CPU side.
   because of that, promote that specific encoding to a real definition in your
   CPU table (step 1) — the override makes it win. Most IMPDEF traffic at boot is
   one-way config writes, for which RAZ/WI is correct and enough.
+  - The S5 port's first such case is the **APRR** permission-remap pair
+    `APRR_EL0`/`APRR_EL1` (`S3_4_C15_C2_0`/`_1`): XNU's pmap re-reads them on
+    *every* protection update and panics ("modifying a PPL mapping") unless they
+    still hold the arch defaults it wrote at bring-up. Under blanket RAZ/WI they
+    read 0 and the check trips on the first mapping. `sn0w_cpu_install_apple_aprr()`
+    promotes exactly those two encodings to constants returning
+    `0x4545010167670101` / `0x4455445566666677`, so the check passes. (The A13
+    core only models the A14-style **SPRR** encodings at `opc1=6`; APRR is the
+    older `opc1=4` pair the Tempest kernel uses.)
 - This is the **QEMU full-system path**, which runs FEAT_PAuth and the 16 KB
   granule natively, so the kernel's 331,911 PAC sites need **no** patching here.
   The separate Unicorn harness (no PAC) is where the bulk PAC-strip applies.
@@ -76,9 +85,10 @@ That is the whole extension surface for the CPU side.
 
 | File | Role |
 | --- | --- |
-| `sn0w_cpu.h` | public interface: `Sn0wImpdefSpace`, the two neutralizer calls |
-| `sn0w_cpu.c` | the RAZ/WI wildcard registration |
+| `sn0w_cpu.h` | public interface: `Sn0wImpdefSpace`, the neutralizer calls, `sn0w_cpu_install_apple_aprr()` |
+| `sn0w_cpu.c` | the RAZ/WI wildcard registration + the Apple APRR promotion |
 
 Mounted into the fork at `hw/arm/sn0w_cpu.c` and `include/hw/arm/sn0w_cpu.h`
-(+ one line in `hw/arm/meson.build`, one `#include` and one call in
+(+ one line in `hw/arm/meson.build`, one `#include` and two calls —
+`sn0w_cpu_neutralize_apple_impdef()` then `sn0w_cpu_install_apple_aprr()` — in
 `hw/arm/apple_a13.c`) — all carried by the adaptation patch.

@@ -109,7 +109,7 @@ system timer run correctly — no per-reader code patching, no whack-a-mole. (Th
 also carries `timebase-frequency = 24 MHz` for `pe_identify_machine`'s own use.)
 Result: the boot clears both timebase panics and advances into IOKit.
 
-### Current blocker: IOKit interrupt-controller resolution (AIC not registered) — DECOMPILED
+### Blocker (bypassed): IOKit interrupt-controller resolution (AIC not registered) — DECOMPILED
 
 The Data Abort (FAR 0) at `0x…07d2b9dc` is IODeviceTree interrupt resolution. The
 crashing function (deep C++, all PAC-signed vcalls) walks devices and resolves each
@@ -145,10 +145,39 @@ for the AIC phandle `0x10`. Why phase-1 skips the AIC is still open (DFS reach v
 the add's inner validity, or the primary controller is meant to be pre-registered
 by the IOPlatformExpert). Per "patch now, clean later", `t8030_patch_kernel` now
 no-ops the resolver (`movz w0,#1; ret`) to get past the NULL-deref -- interrupts are
-not routed by this. **Next blocker reached:** a PPL panic
-`"%s: modifying a PPL mapping pte_p=%p pmap=%p prot=%d options=%u ..."` (`0x…08b22b14`,
-`__PPLTEXT`) -- a pmap/PPL write to a protected PTE, possibly independent or a
-consequence of the unrouted interrupts.
+not routed by this.
+
+### pmap PPL/xPRR consistency check (APRR) — RESOLVED
+
+Past the resolver no-op, boot hit `panic("%s: modifying a PPL mapping pte_p=%p
+pmap=%p prot=%d options=%u, pte=0x%llx, tmplate=0x%llx")` in `__PPLTEXT`
+(`0x…08b22b14`). Decompiling the containing function (`0x…08b22650`, a pmap
+protection-update over a VA range; REA `ev_87531d34`) showed the panic is a
+**consistency check**, not a real protection fault: on every mapping it reads the
+Apple **APRR** permission-remap registers `APRR_EL0` (`S3_4_C15_C2_0`) and
+`APRR_EL1` (`S3_4_C15_C2_1`) and panics ("modifying a PPL mapping" / "creating an
+xPRR mapping") unless they still hold the architectural defaults
+`0x4545010167670101` / `0x4455445566666677` the kernel wrote at bring-up. Our sn0w
+blanket RAZ/WI made them read **0**, so the check tripped on the first mapping
+(gdbstub: `x0` = the format string, `x2` = `pte_p` in the physmap aperture). The
+A13 core models only the A14-style **SPRR** encodings (`opc1=6`), not the A13-era
+**APRR** pair (`opc1=4`) the S5/Tempest kernel uses — which is also why
+`s3_4_c15_c2_1` originally trapped to Undefined Instruction.
+
+**Fix (root-cause, in the sn0w layer):** `sn0w_cpu_install_apple_aprr()` defines
+`APRR_EL0`/`APRR_EL1` to return those defaults, overriding the blanket RAZ/WI for
+just those two encodings (SPRR-based MMU remapping is never enabled on this core,
+so the PTE AP/XN/PXN bits keep their architectural meaning — no remap table is
+consulted). The pmap panic is gone and boot advances through pmap.
+
+### Current blocker: ppl_dispatch (GXF/PPL call gate)
+
+Boot now reaches `panic("ppl_dispatch: failed due to bad arguments/state")` (fmt
+`0x…08b83130`, reached via the generic panic trampoline `0x…08b1af1c`, caught with
+a gdbstub breakpoint there). `ppl_dispatch` is the GXF (`genter`/guarded-mode) gate
+that runs a PPL routine; "bad arguments/state" means the PPL entry rejected the
+dispatch. Next piece to decompile: the dispatch index/args and the fork's
+GXF/`arm_is_guarded` path (`apple_a13_gxf.c`). Console is still upstream.
 
 ### How to diagnose a boot crash
 

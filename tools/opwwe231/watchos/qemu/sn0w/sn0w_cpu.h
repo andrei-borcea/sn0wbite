@@ -41,4 +41,15 @@ void sn0w_cpu_neutralize_impdef(ARMCPU *cpu,
 /* Convenience preset for the Apple IMPDEF space (op0=3, CRn=15). */
 void sn0w_cpu_neutralize_apple_impdef(ARMCPU *cpu);
 
+/*
+ * Install the Apple APRR permission-remap registers APRR_EL0 (S3_4_C15_C2_0)
+ * and APRR_EL1 (S3_4_C15_C2_1) holding their architectural defaults, so an
+ * APRR-era kernel (A11..A13 / S4-S5 watch SoCs) that re-reads and verifies
+ * them does not panic. The A13 QEMU core only models the A14-style SPRR
+ * encodings (opc1=6); this supplies the older APRR pair (opc1=4) the Tempest
+ * kernel programs. Call AFTER sn0w_cpu_neutralize_apple_impdef() so these
+ * override the blanket RAZ/WI for their two encodings.
+ */
+void sn0w_cpu_install_apple_aprr(ARMCPU *cpu);
+
 #endif /* HW_ARM_SN0W_CPU_H */

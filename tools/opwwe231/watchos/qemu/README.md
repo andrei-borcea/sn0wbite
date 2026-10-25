@@ -18,14 +18,19 @@ README for the porting guide.
    RAZ/WI the Apple IMPDEF (`op0=3, CRn=15`) register space before the A13's real
    table, so the S5/Tempest IMPDEF registers the A13 model does not implement no
    longer trap to Undefined Instruction. This is what the "neutralize 82 IMPDEF
-   registers" scope item becomes on the QEMU path.
+   registers" scope item becomes on the QEMU path. Registers the kernel reads
+   back are then *promoted* from RAZ/WI to real definitions: so far the **APRR**
+   permission-remap pair `APRR_EL0`/`APRR_EL1` (`S3_4_C15_C2_0`/`_1`), which
+   `sn0w_cpu_install_apple_aprr()` seeds with their arch defaults so XNU's pmap
+   PPL/xPRR consistency check passes (the A13 core models only the A14-style
+   SPRR encodings at `opc1=6`; APRR is the older `opc1=4` pair).
 3. **Minimal boot-to-console machine** (`t8030.c`): skip the coprocessor device
    creates (ANS/SART/SMC/SIO/SPMI/PMU/USB/DART/GPIO/I2C/display) that assert on
    the T8006 DeviceTree, and make the `nvram` device optional in
    `t8030_memory_setup` (nvram is an NVMe namespace off the ANS we skip, and is
    not needed to reach kernel console — boot proceeds with an empty nvram proxy).
 
-## Status (24 October 2026)
+## Status (25 October 2026)
 
 - **Machine init completes**: with nvram optional, the machine reaches the
   init-done notifier without aborting and the kernel is launched
@@ -39,13 +44,25 @@ README for the porting guide.
   `KEEP_COMP` (REA `ev_aa85dcf4`/`ev_189cc62f`). Whitelisting `apple,tempest`
   clears the 2.4 M-trap death spiral; the kernel now runs far into early
   per-CPU/pmap init.
-- **Next blocker**: `panic("rtclock timebase_callback: invalid constant %ld / %ld")`
-  (REA `ev_be8eb31d`; the `0xe7ffdeff` trap is the panic finalizer's halt). The
-  mach-timebase `{numer,denom}` is `{0,0}` (callback needs `denom` in `[1,4]`)
-  because `gPEClockFrequencyInfo` is still zero when rtclock runs — the `pe_init`
-  DeviceTree walk that reads `timebase-frequency` has not run yet. The patch now
-  provides `timebase-frequency = 24 MHz` (root + cpu nodes, 8-byte) which is
-  correct but consumed too late. Next: establish the timebase before `rtclock_init`
-  (boot_args / aic-timebase), still upstream of `serial_init`.
+- **Timebase panics fixed**: both `rtclock timebase_callback: invalid constant`
+  and the generic-timer `invalid bit index` came from `gPEClockFrequencyInfo
+  .timebase_frequency_hz = 0`. Root cause is one uninitialised seed, so the patch
+  writes `24 MHz` into it at load time (and ships `timebase-frequency` in the DT).
+  Boot advances through the timers into IOKit/platform-expert init.
+- **IOKit interrupt-controller resolution bypassed**: `IODeviceTreeAlloc`
+  phase-1 registers no controller, so the per-node interrupt resolver NULL-derefs
+  on the empty arrays for the AIC phandle `0x10`. Bring-up tolerant no-op of the
+  resolver (`movz w0,#1; ret`) gets past it; interrupts are not routed (clean AIC
+  registration still pending). See [build & boot](../../../docs/watchos/qemu-build-and-boot.md).
+- **pmap APRR consistency check fixed**: the next panic, `"%s: modifying a PPL
+  mapping …"` in `__PPLTEXT` (`0x…08b22650`, REA `ev_87531d34`), was a check that
+  re-reads `APRR_EL0`/`APRR_EL1` (`S3_4_C15_C2_0/1`) on every mapping and demands
+  the arch defaults; our RAZ/WI made them read 0. Promoted via
+  `sn0w_cpu_install_apple_aprr()` (item 2). Boot now advances through pmap.
+- **Current blocker**: `panic("ppl_dispatch: failed due to bad arguments/state")`
+  (fmt `0x…08b83130`, via the panic trampoline `0x…08b1af1c`). The GXF/PPL call
+  gate (`genter`/guarded mode) rejects a PPL dispatch — next to decompile
+  (dispatch index/args + the fork's `apple_a13_gxf.c` guarded path). Still upstream
+  of `serial_init`.
 
 Apply: `cd qemu-t8030 && git apply <this>/t8006-adaptation.patch` then rebuild.

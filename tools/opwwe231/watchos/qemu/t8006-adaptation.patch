@@ -1,13 +1,14 @@
 # sn0wbite T8006 adaptation of the qemu-t8030 fork. Apply: cd qemu-t8030 && git apply <this>; build;
 # run with -smp 2. See docs/watchos/qemu-build-and-boot.md. Covers: A13 CPU node optional for
-# Tempest(S5); sn0w CPU layer sn0w_cpu.{c,h} RAZ/WI Apple IMPDEF(op0=3,CRn=15); minimal machine
-# (coprocessors skipped, nvram optional); DT timebase-frequency + load-time seed of
-# gPEClockFrequencyInfo.timebase_frequency_hz=24MHz; KEEP_COMP += apple,tempest; and a bring-up
-# tolerant no-op of the IODeviceTree interrupt resolver (0x7d2b5b4) (AIC not registered; clean
-# fix pending). Boot reaches cpu-topology->timebase->IOKit(bypassed)->a PPL pmap panic.
+# Tempest(S5); sn0w CPU layer sn0w_cpu.{c,h} RAZ/WI Apple IMPDEF(op0=3,CRn=15) + APRR_EL0/EL1
+# (S3_4_C15_C2_0/1) seeded to their arch defaults so the pmap PPL/xPRR consistency check passes;
+# minimal machine (coprocessors skipped, nvram optional); DT timebase-frequency + load-time seed
+# of gPEClockFrequencyInfo.timebase_frequency_hz=24MHz; KEEP_COMP += apple,tempest; and a bring-up
+# tolerant no-op of the IODeviceTree interrupt resolver (0x7d2b5b4) (AIC not registered; clean fix
+# pending). Boot: cpu-topology -> timebase -> IOKit(bypassed) -> pmap(APRR ok) -> ppl_dispatch.
 #
 diff --git a/hw/arm/apple_a13.c b/hw/arm/apple_a13.c
-index d304c75..864061d 100644
+index d304c75..631339d 100644
 --- a/hw/arm/apple_a13.c
 +++ b/hw/arm/apple_a13.c
 @@ -9,6 +9,7 @@
@@ -18,7 +19,7 @@ index d304c75..864061d 100644
  #include "target/arm/cpregs.h"
  #include "arm-powerctl.h"
  #include "sysemu/reset.h"
-@@ -553,6 +554,11 @@ static const ARMCPRegInfo apple_a13_cp_reginfo_tcg[] = {
+@@ -553,8 +554,18 @@ static const ARMCPRegInfo apple_a13_cp_reginfo_tcg[] = {
  static void apple_a13_add_cpregs(AppleA13State *tcpu)
  {
      ARMCPU *cpu = ARM_CPU(tcpu);
@@ -29,8 +30,15 @@ index d304c75..864061d 100644
 +    sn0w_cpu_neutralize_apple_impdef(cpu);
      define_arm_cp_regs(cpu, apple_a13_cp_reginfo_tcg);
      apple_a13_init_gxf(tcpu);
++    /* sn0w: the S5/Tempest kernel uses the A13-era APRR registers (opc1=4),
++     * which this core does not model; supply them with their architectural
++     * defaults so the pmap PPL/xPRR consistency check passes. Last, so the
++     * override wins over the blanket RAZ/WI regardless of the tables above. */
++    sn0w_cpu_install_apple_aprr(cpu);
  }
-@@ -635,8 +641,7 @@ AppleA13State *apple_a13_cpu_create(DTBNode *node)
+ 
+ static void apple_a13_realize(DeviceState *dev, Error **errp)
+@@ -635,8 +646,7 @@ AppleA13State *apple_a13_cpu_create(DTBNode *node)
      tcpu->phys_id = *(unsigned int*)prop->value;
  
      prop = find_dtb_prop(node, "cluster-id");
@@ -40,7 +48,7 @@ index d304c75..864061d 100644
  
      mpidr = 0LL | tcpu->phys_id | (1LL << 31);
  
-@@ -647,7 +652,7 @@ AppleA13State *apple_a13_cpu_create(DTBNode *node)
+@@ -647,7 +657,7 @@ AppleA13State *apple_a13_cpu_create(DTBNode *node)
      cpu->midr = FIELD_DP64(cpu->midr, MIDR_EL1, REVISION, 0x1);
  
      prop = find_dtb_prop(node, "cluster-type");
@@ -63,10 +71,10 @@ index 452a377..dda350c 100644
      'apple_sep.c',
 diff --git a/hw/arm/sn0w_cpu.c b/hw/arm/sn0w_cpu.c
 new file mode 100644
-index 0000000..ab23f36
+index 0000000..6f4cdf9
 --- /dev/null
 +++ b/hw/arm/sn0w_cpu.c
-@@ -0,0 +1,54 @@
+@@ -0,0 +1,99 @@
 +/*
 + * sn0w CPU compat layer -- IMPDEF system-register neutralization.
 + *
@@ -120,6 +128,51 @@ index 0000000..ab23f36
 +        { .op0 = 3, .crn = 15 },
 +    };
 +    sn0w_cpu_neutralize_impdef(cpu, apple_impdef, ARRAY_SIZE(apple_impdef));
++}
++
++void sn0w_cpu_install_apple_aprr(ARMCPU *cpu)
++{
++    /*
++     * APRR_EL0 (S3_4_C15_C2_0) and APRR_EL1 (S3_4_C15_C2_1): the Apple
++     * A11..A13 / S4-S5 "Access Protection Remap Registers". They hold two
++     * 16-entry x 4-bit permission-index tables. The A13 QEMU core models only
++     * the A14-style SPRR encodings (opc1=6); the Tempest/S5 watchOS kernel
++     * instead programs these APRR registers (opc1=4), and on every pmap
++     * protection update it re-reads them and panics -- "modifying a PPL
++     * mapping" / "creating an xPRR mapping" -- unless they still hold the exact
++     * architectural defaults it wrote during early CPU bring-up. The blanket
++     * RAZ/WI absorbed the writes but then read back 0, tripping that
++     * consistency check on the very first mapping.
++     *
++     * Return the defaults the kernel writes and verifies:
++     *   APRR_EL0 = 0x4545010167670101   APRR_EL1 = 0x4455445566666677
++     * Writes stay ignored, which is safe here: the kernel only ever stores
++     * these same constants (the check hardcodes them, so they are invariant),
++     * and SPRR-based MMU remapping is never enabled on this core -- no remap
++     * table is consulted during translation, so the PTE AP/XN/PXN bits keep
++     * their architectural meaning. ARM_CP_OVERRIDE lets these two definitions
++     * replace the blanket RAZ/WI for their own encodings.
++     */
++    ARMCPRegInfo aprr_el0 = {
++        .name = "APRR_EL0",
++        .cp = CP_REG_ARM64_SYSREG_CP,
++        .opc0 = 3, .opc1 = 4, .crn = 15, .crm = 2, .opc2 = 0,
++        .state = ARM_CP_STATE_AA64,
++        .access = PL1_RW,
++        .type = ARM_CP_CONST | ARM_CP_OVERRIDE,
++        .resetvalue = 0x4545010167670101ULL,
++    };
++    ARMCPRegInfo aprr_el1 = {
++        .name = "APRR_EL1",
++        .cp = CP_REG_ARM64_SYSREG_CP,
++        .opc0 = 3, .opc1 = 4, .crn = 15, .crm = 2, .opc2 = 1,
++        .state = ARM_CP_STATE_AA64,
++        .access = PL1_RW,
++        .type = ARM_CP_CONST | ARM_CP_OVERRIDE,
++        .resetvalue = 0x4455445566666677ULL,
++    };
++    define_one_arm_cp_reg(cpu, &aprr_el0);
++    define_one_arm_cp_reg(cpu, &aprr_el1);
 +}
 diff --git a/hw/arm/t8030.c b/hw/arm/t8030.c
 index fd0ce37..c4a45fe 100644
@@ -296,10 +349,10 @@ index 2ca4983..08578e1 100644
      "pmgr1,t8030\0$",
 diff --git a/include/hw/arm/sn0w_cpu.h b/include/hw/arm/sn0w_cpu.h
 new file mode 100644
-index 0000000..8f5d928
+index 0000000..d5dbc6d
 --- /dev/null
 +++ b/include/hw/arm/sn0w_cpu.h
-@@ -0,0 +1,44 @@
+@@ -0,0 +1,55 @@
 +/*
 + * sn0w CPU compat layer -- public interface.
 + *
@@ -342,5 +395,16 @@ index 0000000..8f5d928
 +
 +/* Convenience preset for the Apple IMPDEF space (op0=3, CRn=15). */
 +void sn0w_cpu_neutralize_apple_impdef(ARMCPU *cpu);
++
++/*
++ * Install the Apple APRR permission-remap registers APRR_EL0 (S3_4_C15_C2_0)
++ * and APRR_EL1 (S3_4_C15_C2_1) holding their architectural defaults, so an
++ * APRR-era kernel (A11..A13 / S4-S5 watch SoCs) that re-reads and verifies
++ * them does not panic. The A13 QEMU core only models the A14-style SPRR
++ * encodings (opc1=6); this supplies the older APRR pair (opc1=4) the Tempest
++ * kernel programs. Call AFTER sn0w_cpu_neutralize_apple_impdef() so these
++ * override the blanket RAZ/WI for their two encodings.
++ */
++void sn0w_cpu_install_apple_aprr(ARMCPU *cpu);
 +
 +#endif /* HW_ARM_SN0W_CPU_H */
