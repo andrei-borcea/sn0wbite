@@ -109,7 +109,7 @@ system timer run correctly — no per-reader code patching, no whack-a-mole. (Th
 also carries `timebase-frequency = 24 MHz` for `pe_identify_machine`'s own use.)
 Result: the boot clears both timebase panics and advances into IOKit.
 
-### Current blocker: IOKit interrupt-controller resolution (AIC not registered)
+### Current blocker: IOKit interrupt-controller resolution (AIC not registered) — DECOMPILED
 
 The Data Abort (FAR 0) at `0x…07d2b9dc` is IODeviceTree interrupt resolution. The
 crashing function (deep C++, all PAC-signed vcalls) walks devices and resolves each
