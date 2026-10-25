@@ -31,11 +31,25 @@
 # matching + Power-Management deadlock -- drivers block (waitForService / PM
 # registration) waiting for provider services that never publish because the
 # coprocessors/devices were skipped. Re-enabling them, adapting each to the
-# T8006 DT (node names differ from iOS/t8030). First re-enabled: SPMI, as the
-# T8006 node "spmi" (iOS had spmi0..2); builds clean, boot unchanged (SPMI is
-# not the PM dependency -- the power stack the PM waits on is SMC). Next: SMC
-# (iop,ascwrap-v2 RTBuddy coprocessor) + smc-pmu, then the remaining IOPs/DARTs,
-# then real primary-AIC registration (replacing the resolver no-op).
+# T8006 DT (node names differ from iOS/t8030). Re-enabled so far: SPMI (T8006
+# node "spmi", iOS had spmi0..2) and SMC (iop,ascwrap-v2 RTBuddy coprocessor;
+# T8006 "smc" matches the t8030 path, region-base 0x23fe00000 ==
+# T8030_SMC_TEXT_BASE). Also fixed the RTBuddy protocol version: it was keyed on
+# the build-version MAJOR with only iOS cases (13/14/15/16); watchOS reports
+# MAJOR 6/7/8 so it stayed 0 and the SMC/ANS/SIO mailbox handshake would break
+# -- added watchOS 6->10, 7->11, 8/9->12. Both build clean, NO regression, but
+# neither shifts the plateau: empirically the boot stalls UPSTREAM of the
+# coprocessor drivers (they never start).
+#
+# AIC root cause (confirmed via r2/pdg + disasm of the controller-add
+# 0x7d2ac10): IODeviceTreeAlloc builds the IORegistry and creates the
+# interrupt-resolver arrays (0x8c796a8 phandles / 0x8c796b0 controllers) but
+# adds a controller ONLY IF, walking a node's AAPL,phandle attached-object list,
+# an entry == gIOPlatform (attached by registerInterruptController). The primary
+# AIC (phandle 0x10) never gets gIOPlatform attached -> never added -> the
+# resolver finds no controller (hence the tolerant no-op). gdbstub confirms the
+# add at 0x7d2ac10 NEVER fires, and zero AIC MMIO = the AppleInterruptController
+# driver never starts. Registering the primary AIC is the next step.
 #
 diff --git a/hw/arm/apple_a13.c b/hw/arm/apple_a13.c
 index d304c75..7d172bd 100644
@@ -226,7 +240,7 @@ index 0000000..2cc4d2c
 +    define_one_arm_cp_reg(cpu, &aprr_el1);
 +}
 diff --git a/hw/arm/t8030.c b/hw/arm/t8030.c
-index fd0ce37..589bb53 100644
+index fd0ce37..71db14b 100644
 --- a/hw/arm/t8030.c
 +++ b/hw/arm/t8030.c
 @@ -38,6 +38,7 @@
@@ -459,7 +473,29 @@ index fd0ce37..589bb53 100644
          tms->cpus[i] = apple_a13_cpu_create(node);
          cluster_id = tms->cpus[i]->cluster_id;
  
-@@ -1712,6 +1880,15 @@ static void t8030_machine_init(MachineState *machine)
+@@ -1682,6 +1850,21 @@ static void t8030_machine_init(MachineState *machine)
+ 
+     if (tms->rtbuddyv2_protocol_version == 0) {
+         switch (BUILD_VERSION_MAJOR(build_version)) {
++            /* sn0w: watchOS majors map to the same XNU/RTBuddy era as iOS:
++             * watchOS 6 == XNU 6153 == iOS 13 (proto 10), wOS 7 == iOS 14
++             * (11), wOS 8/9 == iOS 15/16 (12). The build-version MAJOR is the
++             * OS version (6 for our watchOS 6.3.1), so without these cases it
++             * stays 0 and the SMC/ANS/SIO RTBuddy mailbox handshake breaks. */
++            case 6:
++                tms->rtbuddyv2_protocol_version = 10;
++                break;
++            case 7:
++                tms->rtbuddyv2_protocol_version = 11;
++                break;
++            case 8:
++            case 9:
++                tms->rtbuddyv2_protocol_version = 12;
++                break;
+             case 13:
+                 tms->rtbuddyv2_protocol_version = 10;
+                 break;
+@@ -1712,6 +1895,15 @@ static void t8030_machine_init(MachineState *machine)
                                                  &tms->bootinfo.trustcache_size);
      data = 24000000;
      set_dtb_prop(tms->device_tree, "clock-frequency", 4, &data);
@@ -475,7 +511,7 @@ index fd0ce37..589bb53 100644
      child = find_dtb_node(tms->device_tree, "arm-io");
      assert(child != NULL);
  
-@@ -1773,49 +1950,55 @@ static void t8030_machine_init(MachineState *machine)
+@@ -1773,49 +1965,59 @@ static void t8030_machine_init(MachineState *machine)
  
      t8030_create_aic(machine);
  
@@ -540,9 +576,12 @@ index fd0ce37..589bb53 100644
 -    t8030_create_pmu(machine, "spmi0", "spmi-pmu");
 +    /* sn0w: skip for minimal T8006 console */ /* t8030_create_pmu(machine, "spmi0", "spmi-pmu"); */
  
--    t8030_create_smc(machine);
++    /* sn0w T8006: re-enable the SMC RTBuddy coprocessor. The T8006 "smc" node
++     * is iop,ascwrap-v2 (like t8030), region-base 0x23fe00000 matches
++     * T8030_SMC_TEXT_BASE, 2 reg windows + 4 interrupts -- the t8030 path fits.
++     * The PM stack (IOPMrootDomain) waits on it. */
+     t8030_create_smc(machine);
 -    t8030_create_sio(machine);
-+    /* sn0w: skip for minimal T8006 console */ /* t8030_create_smc(machine); */
 +    /* sn0w: skip for minimal T8006 console */ /* t8030_create_sio(machine); */
  
      for (int i = 0; i < T8030_NUM_SPIS; i++) {
