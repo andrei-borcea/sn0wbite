@@ -1,12 +1,13 @@
 # sn0wbite T8006 adaptation of the qemu-t8030 fork. Apply: cd qemu-t8030 && git apply <this>; build;
 # run with -smp 2. See docs/watchos/qemu-build-and-boot.md. Covers: A13 CPU node optional for
-# Tempest(S5); sn0w CPU layer sn0w_cpu.{c,h} RAZ/WI Apple IMPDEF(op0=3,CRn=15) + real R/W APRR_EL0/EL1
-# (S3_4_C15_C2_0/1, backed by CPUARMState.sprr.aprr_el[]) so the pmap PPL/xPRR check AND the PPL
-# call gate's APRR readback both pass; minimal machine (coprocessors skipped, nvram optional); DT
-# timebase-frequency + load-time seed of gPEClockFrequencyInfo.timebase_frequency_hz=24MHz; KEEP_COMP
-# += apple,tempest; and a bring-up tolerant no-op of the IODeviceTree interrupt resolver (0x7d2b5b4).
-# Boot: cpu-topology -> timebase -> IOKit(bypassed) -> pmap(APRR) -> ppl_dispatch(APRR) -> runs PPL
-# routines; next blocker = APRR MMU permission-remap unimplemented (PPL bzero write-faults RO pages).
+# Tempest(S5); sn0w CPU layer sn0w_cpu.{c,h}: RAZ/WI Apple IMPDEF(op0=3,CRn=15) + real R/W APRR_EL0/EL1
+# (S3_4_C15_C2_0/1, backed by CPUARMState.sprr.aprr_el[]) so the pmap PPL/xPRR check AND the PPL call
+# gate's APRR readback pass; a bring-up APRR MMU write-grant in ptw.c (EL1 read-only non-exec pages ->
+# R/W) so PPL can write its protected pages; minimal machine (coprocessors skipped, nvram optional,
+# 4 GB DRAM kept -- do NOT shrink, top-of-DRAM firmware regions must stay backed); DT timebase-frequency
+# + load-time seed of gPEClockFrequencyInfo=24MHz; KEEP_COMP += apple,tempest; tolerant no-op of the
+# IODeviceTree interrupt resolver. Boot: early-asm -> pmap -> PPL -> VM init -> early SMP/cpu init
+# (reaches timer-wait/idle loops); next blocker = interrupt delivery (AIC bypassed) + secondary CPU start.
 #
 diff --git a/hw/arm/apple_a13.c b/hw/arm/apple_a13.c
 index d304c75..631339d 100644
@@ -183,10 +184,23 @@ index 0000000..2cc4d2c
 +    define_one_arm_cp_reg(cpu, &aprr_el1);
 +}
 diff --git a/hw/arm/t8030.c b/hw/arm/t8030.c
-index fd0ce37..c4a45fe 100644
+index fd0ce37..3b2735c 100644
 --- a/hw/arm/t8030.c
 +++ b/hw/arm/t8030.c
-@@ -174,6 +174,33 @@ static void t8030_patch_kernel(struct mach_header_64 *hdr)
+@@ -70,6 +70,12 @@
+ #include "hw/display/m1_fb.h"
+ 
+ #define T8030_DRAM_BASE         (0x800000000)
++/* sn0w: keep the fork's 4 GB. Do NOT shrink this: the machine/DT place
++ * reserved firmware regions near the TOP of DRAM (observed ~dram_base+4GB,
++ * e.g. 0x8ffeb0000), which pe_identify_machine maps and probes for a magic.
++ * A smaller DRAM leaves those regions unbacked -> external abort (DFSC 0x10)
++ * at 0x..07dd10e0 -> recursive panic. (A faster-boot path must relocate those
++ * regions, not just reduce size.) */
+ #define T8030_DRAM_SIZE         (4 * GiB)
+ 
+ /*
+@@ -174,6 +180,33 @@ static void t8030_patch_kernel(struct mach_header_64 *hdr)
  {
      //disable_kprintf_output = 0
      // *(uint32_t *)vtop_static(0xFFFFFFF0077142C8) = 0;
@@ -220,7 +234,7 @@ index fd0ce37..c4a45fe 100644
      kpf();
  }
  
-@@ -480,9 +507,14 @@ static void t8030_memory_setup(MachineState *machine)
+@@ -480,9 +513,14 @@ static void t8030_memory_setup(MachineState *machine)
  
      nvram = APPLE_NVRAM(qdev_find_recursive(sysbus_get_default(), "nvram"));
      if (!nvram) {
@@ -238,7 +252,7 @@ index fd0ce37..c4a45fe 100644
      apple_nvram_load(nvram);
  
      fprintf(stderr, "boot_mode: %u\n", tms->boot_mode);
-@@ -521,6 +553,7 @@ static void t8030_memory_setup(MachineState *machine)
+@@ -521,6 +559,7 @@ static void t8030_memory_setup(MachineState *machine)
      if (apple_nvram_serialize(nvram, info->nvram_data, sizeof(info->nvram_data)) < 0) {
          error_report("%s: Failed to read NVRAM", __func__);
      }
@@ -246,7 +260,7 @@ index fd0ce37..c4a45fe 100644
  
      if (tms->ticket_filename) {
          if (!g_file_get_contents(tms->ticket_filename, &info->ticket_data, (gsize *)&info->ticket_length, NULL)) {
-@@ -725,6 +758,14 @@ static void t8030_cpu_setup(MachineState *machine)
+@@ -725,6 +764,14 @@ static void t8030_cpu_setup(MachineState *machine)
              continue;
          }
  
@@ -261,7 +275,7 @@ index fd0ce37..c4a45fe 100644
          tms->cpus[i] = apple_a13_cpu_create(node);
          cluster_id = tms->cpus[i]->cluster_id;
  
-@@ -1712,6 +1753,15 @@ static void t8030_machine_init(MachineState *machine)
+@@ -1712,6 +1759,15 @@ static void t8030_machine_init(MachineState *machine)
                                                  &tms->bootinfo.trustcache_size);
      data = 24000000;
      set_dtb_prop(tms->device_tree, "clock-frequency", 4, &data);
@@ -277,7 +291,7 @@ index fd0ce37..c4a45fe 100644
      child = find_dtb_node(tms->device_tree, "arm-io");
      assert(child != NULL);
  
-@@ -1780,42 +1830,42 @@ static void t8030_machine_init(MachineState *machine)
+@@ -1780,42 +1836,42 @@ static void t8030_machine_init(MachineState *machine)
      t8030_pmgr_setup(machine);
      t8030_amcc_setup(machine);
  
@@ -433,3 +447,40 @@ index a259770..da2939c 100644
      } sprr;
  
      struct {
+diff --git a/target/arm/ptw.c b/target/arm/ptw.c
+index 1b2b205..11a9f36 100644
+--- a/target/arm/ptw.c
++++ b/target/arm/ptw.c
+@@ -871,6 +871,32 @@ static int get_S1prot(CPUARMState *env, ARMMMUIdx mmu_idx, bool is_aa64,
+         }
+     }
+ 
++    /*
++     * sn0w: APRR permission-remap, bring-up approximation. On A13/S5 the PPL
++     * protects its own pages (page-table pages, pmap/pv structures) by mapping
++     * them read-only, non-executable at EL1 (AP[2:1]=0b10, XN=1 -> xPRR indices
++     * 10/11) and making them writable only from inside PPL, via the APRR remap.
++     * QEMU's A13 core implements permission remap only for the A14 SPRR path,
++     * never for APRR, so a PPL write to such a page (e.g. the bzero/dc-zva of a
++     * freshly allocated page-table page at 0x..07df30c0) permission-faults in an
++     * endless retry loop. The real mechanism is not a simple APRR_EL1[idx]
++     * lookup (the observed PPL-mode table leaves those indices non-writable),
++     * and gating on the live APRR_EL1 value would demand a full TLB flush on
++     * every PPL enter/exit -- far too slow. Model the net effect statically
++     * instead: grant EL1 data R/W to EL1-read-only, non-executable pages. PPL
++     * never maps anything else this way, and nothing outside PPL writes these
++     * pages, so boot behaves as on hardware; only the (emulation-irrelevant) PPL
++     * write-protection of otherwise-idle pages is relaxed. Kernel text (XN=0)
++     * and EL0 mappings are untouched. This is inert on a non-Apple core because
++     * such cores never present this exact S5 PPL mapping during boot.
++     *
++     * TODO(faithful): drive a real APRR remap from env->sprr.aprr_el[] once the
++     * exact PPL-mode write-grant mechanism is reverse-engineered.
++     */
++    if (!is_user && ap == 2 && xn) {
++        prot_rw |= PAGE_READ | PAGE_WRITE;
++    }
++
+     if (ns && arm_is_secure(env) && (env->cp15.scr_el3 & SCR_SIF)) {
+         return prot_rw;
+     }

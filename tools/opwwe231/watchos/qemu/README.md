@@ -66,11 +66,20 @@ README for the porting guide.
   `genter` — this kernel has no GXF) writes `APRR_EL1` to the PPL-writable value
   then verifies the readback. RAZ/WI (and then CONST) failed both; making the pair
   genuine R/W (item 2) clears both. PPL routines now execute.
-- **Current blocker**: APRR **MMU permission-remap** is unimplemented. PPL runs but
-  spins in a Data-Abort loop (ESR `0x9600004f`, write perm fault L3) when `bzero`/
-  `dc zva` zeroes a freshly allocated PPL page: those pages are mapped raw-`RO` and
-  rely on APRR remapping them `RW` while in PPL mode. The core remaps only for the
-  A14 SPRR path (`ptw.c`), never APRR. Fix: add an APRR remap path driven by
-  `env->sprr.aprr_el[]`. Still upstream of `serial_init`.
+- **APRR MMU permission-remap fixed (bring-up grant)**: PPL mapped its pages
+  read-only, non-exec (`ap=2,xn=1`) and relied on APRR to make them writable in PPL
+  mode, but the core remaps only the A14 SPRR path — so PPL's `bzero`/`dc zva` of a
+  fresh page-table page looped on a write perm fault (ESR `0x9600004f`).
+  Instrumenting `get_S1prot` showed the PPL-mode APRR tables do **not** mark those
+  indices writable, so the write-grant is the "PPL mode" state itself; `ptw.c` now
+  grants EL1 R/W to EL1-RO non-exec pages. PPL writes succeed; boot runs through PPL
+  and VM init.
+- **Current blocker**: **interrupt delivery + secondary CPU** (the bypassed AIC).
+  Boot reaches early SMP/platform init and timer-wait/idle loops (`0x…0784aca8`),
+  but CPU0 cycles there and **CPU1 never leaves the reset vector** — because the
+  interrupt resolver is no-op'd and the AIC skipped, so no timer IRQ/IPI is
+  delivered and the scheduler/timed waits never advance. `console_init` is further
+  on. Next phase: bring up the AIC (timer IRQ, then IPIs / CPU1 start). Still
+  upstream of `serial_init`.
 
 Apply: `cd qemu-t8030 && git apply <this>/t8006-adaptation.patch` then rebuild.

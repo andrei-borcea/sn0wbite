@@ -188,25 +188,45 @@ sticks and the readback matches. The default and the PPL-mode value differ only 
 APRR index 10, which the pmap check exempts (mask `0x440`), so one R/W register
 satisfies both. ppl_dispatch now succeeds and PPL routines execute.
 
-### Current blocker: APRR MMU permission-remap unimplemented (PPL page RO write-fault loop)
+### APRR MMU permission-remap (PPL page RO write-fault loop) — RESOLVED (bring-up grant)
 
-With PPL routines running, boot spins on a **Data Abort loop** (no panic): ESR
+With PPL routines running, boot spun on a **Data Abort loop** (no panic): ESR
 `0x9600004f` = write **permission fault, level 3**, FAR in the physmap aperture
 (`0xffffffe066808000` / `…c000`), faulting PC `0x…07df30e0`/`…3108` inside
-`bzero`/`memset` (`stp x1,x1,[x0]` then `dc zva,x3`, `x1=0`). The abort vector
-(`0x…07df4000`) handles and retries the same instruction → infinite loop. Root
-cause: PPL maps its protected pages (page-table pages, pmap/pv structures) with raw
-`AP = RO` and relies on the **APRR permission remap** to make them writable *while
-in PPL mode* (that is exactly what toggling `APRR_EL1` index 10 means). The A13
-QEMU core implements remap only for the A14-style **SPRR** path (`ptw.c
-pte_to_sprr_prot_is_guarded`, gated by `arm_is_sprr_enabled`), never for **APRR**,
-so translation uses the raw RO bits and PPL's zeroing of a freshly allocated PPL
-page write-faults. **Next (the real fix):** implement APRR remap in `ptw.c` —
-mirror the SPRR path but drive it from `env->sprr.aprr_el[]` (EL1 table for EL1
-accesses, EL0 for EL0), decoding each PTE's 4-bit index `((AP<<2)|(XN<<1)|PXN)` to
-effective R/W/X, with a TLB flush when `APRR_EL1` changes. First establish the
-enable condition (APCTL `S3_4_C15_C1_0`, currently RAZ/WI) and the attr→prot decode
-from the kernel. Console is still upstream.
+`bzero`/`dc zva` (`stp x1,x1,[x0]`, `x1=0`) — PPL zeroing a freshly allocated
+page-table page. The abort vector retried the same instruction → endless loop.
+Root cause: PPL maps its protected pages read-only, non-exec at EL1
+(`AP[2:1]=0b10`, `XN=1` → xPRR indices 10/11) and relies on the **APRR permission
+remap** to make them writable from inside PPL. The A13 QEMU core implements remap
+only for the A14-style **SPRR** path (`ptw.c pte_to_sprr_prot_is_guarded`, gated by
+`arm_is_sprr_enabled`), never for **APRR**, so translation used the raw RO bits.
+
+Instrumenting `get_S1prot` showed the fault pages are index 10 (`ap=2,xn=1,pxn=0`)
+with `sprr_en=0`, and — crucially — that the PPL-mode `APRR_EL1`/`APRR_EL0` tables
+leave indices 10/11 **non-writable** (attr 0/R). So the real write-grant is **not**
+a simple `APRR_EL1[idx]` lookup; it is the "PPL mode" CPU state itself. Fix
+(bring-up): in `get_S1prot`, grant EL1 data R/W to EL1-read-only, non-executable
+pages (`!is_user && ap==2 && xn`). PPL maps nothing else that way and nothing
+outside PPL writes those pages, so boot behaves as on hardware while only relaxing
+the (emulation-irrelevant) PPL write-protection. No TLB-flush/mode tracking needed.
+Result: the loop is gone, PPL writes succeed, boot runs through PPL and VM init.
+(A faithful per-index APRR remap remains a TODO.)
+
+### Current blocker: interrupt delivery + secondary CPU (the bypassed AIC)
+
+Past PPL/VM init, boot reaches **early SMP / platform init and timer-wait/idle
+loops** (`0x…0784aca8`, which reads `cntpct_el0`, arms a deadline via
+`0x…0784740c`, and loops on a processor-state field) — but makes no visible
+progress and prints no console. Both-CPU sampling (QEMU monitor `info registers
+-a`): **CPU0** cycles in these early-init/idle waits, **CPU1 never leaves the reset
+vector** (`0x805df8000`). Root cause: we earlier **no-op'd the IODeviceTree
+interrupt resolver and skipped the AIC** device, so **no interrupts are delivered**
+(no timer tick, no IPI) and the **secondary CPU is never started**. The kernel's
+timed waits and scheduler therefore never advance, and `console_init` (further on)
+is not reached. 4 GB boot is also slow under TCG. **Next (the real next phase):**
+bring up interrupt delivery — model/wire the **AIC** (timer IRQ at minimum, then
+IPIs) so timer interrupts fire and CPU1 can be started. This is the clean AIC fix
+deferred twice; it is the gate to a live, console-producing boot.
 
 ### How to diagnose a boot crash
 
