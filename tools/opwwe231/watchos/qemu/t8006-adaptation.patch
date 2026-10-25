@@ -51,6 +51,29 @@
 # add at 0x7d2ac10 NEVER fires, and zero AIC MMIO = the AppleInterruptController
 # driver never starts. Registering the primary AIC is the next step.
 #
+# *** BREAKTHROUGH (this revision): console works + AIC registers; core deadlock broken. ***
+# ROOT CAUSE of the whole blind-hang/IOKit-deadlock saga: the DT filter stripped the
+# entire /arm-io subtree because "arm-io,t8006" was not in KEEP_COMP (only s8000/t8030
+# variants were). The kernel's DT thus had NO arm-io devices -> no AIC, no DockChannel
+# console node -> gIODTPHandles empty -> the IODeviceTree interrupt resolver NULL-dereffed
+# on the CPUs' interrupt-parent phandle 0x10. FIX 1 (xnu.c): add the T8006/T8002
+# compatibles to KEEP_COMP (arm-io,t8006 + pmgr1/gpio/i2c/wdt/aic,t8006, dockchannel,t8002,
+# dockchannel-uart, mcc/error-handler,t8006) so /arm-io and its children survive. Result:
+# the DockChannel serial console now produces output (we can SEE the boot/panic log), and
+# the boot reaches AppleInterruptController::start. FIX 2 (t8030.c t8030_create_aic): pad
+# the aic node's ipid-mask from 52 to 56 bytes -- apple_aic_create rounds numEIR up to an
+# even 14 ((len/4+1)&~1), so the modelled AIC advertises 14 EIRs/448 IRQs via rAIC_INFO and
+# AppleInterruptController::start demands numEIR*4 = 56 bytes ("length is 52 but should be
+# 56"). Result: the AIC driver starts and registers (_aicVersion=2, _aicNumExtInts=0x1c0,
+# _aicNumIPIs=4) -- the interrupt-controller deadlock that blocked every prior session is
+# BROKEN. Boot now runs through corecrypto/FIPS, AppleCredentialManager, Image4,
+# AppleT8006IO::start (chip-rev B1), the AIC, and stops at the NEXT blocker:
+# ApplePMGR::initDriver (ApplePMGR.cpp:860 "REQUIRE failed: _optionalBridges & (0x1 << i)")
+# -- a T8006 PMGR bridge-config mismatch (24 pmgr reg bridges; a required one is absent).
+# The resolver no-op is kept (phase-2 DT interrupt resolution still crashed on phandle 0x4f
+# aop-gpio with it off; revisit once all interrupt-controller phandles register). Debug is
+# now fast via the live console.
+#
 diff --git a/hw/arm/apple_a13.c b/hw/arm/apple_a13.c
 index d304c75..7d172bd 100644
 --- a/hw/arm/apple_a13.c
@@ -240,7 +263,7 @@ index 0000000..2cc4d2c
 +    define_one_arm_cp_reg(cpu, &aprr_el1);
 +}
 diff --git a/hw/arm/t8030.c b/hw/arm/t8030.c
-index fd0ce37..71db14b 100644
+index fd0ce37..fc9c7a8 100644
 --- a/hw/arm/t8030.c
 +++ b/hw/arm/t8030.c
 @@ -38,6 +38,7 @@
@@ -473,7 +496,31 @@ index fd0ce37..71db14b 100644
          tms->cpus[i] = apple_a13_cpu_create(node);
          cluster_id = tms->cpus[i]->cluster_id;
  
-@@ -1682,6 +1850,21 @@ static void t8030_machine_init(MachineState *machine)
+@@ -752,6 +920,23 @@ static void t8030_create_aic(MachineState *machine)
+     timebase = find_dtb_node(soc, "aic-timebase");
+     assert(timebase);
+ 
++    /*
++     * sn0w T8006: the aic node's "ipid-mask" is 52 bytes (13 EIR groups), but
++     * apple_aic_create rounds numEIR up to an even count -- (len/4 + 1) & ~1 =
++     * 14 -- so the modelled AIC advertises 14 EIRs (numIRQ 448) through
++     * rAIC_INFO, and AppleInterruptController::start then insists the DT
++     * ipid-mask be numEIR*4 = 56 bytes ("length is 52 but should be 56",
++     * AppleInterruptControllerV1.cpp:128). Pad the property to 56 bytes with
++     * one extra all-zero (no-valid-IRQ) EIR group so the driver's length check
++     * matches the model. Must run before apple_aic_create reads it.
++     */
++    prop = find_dtb_prop(child, "ipid-mask");
++    if (prop != NULL && prop->length == 52) {
++        uint8_t ipid_mask[56] = { 0 };
++        memcpy(ipid_mask, prop->value, 52);
++        set_dtb_prop(child, "ipid-mask", sizeof(ipid_mask), ipid_mask);
++    }
++
+     tms->aic = apple_aic_create(machine->smp.cpus, child, timebase);
+     object_property_add_child(OBJECT(machine), "aic", OBJECT(tms->aic));
+     assert(tms->aic);
+@@ -1682,6 +1867,21 @@ static void t8030_machine_init(MachineState *machine)
  
      if (tms->rtbuddyv2_protocol_version == 0) {
          switch (BUILD_VERSION_MAJOR(build_version)) {
@@ -495,7 +542,7 @@ index fd0ce37..71db14b 100644
              case 13:
                  tms->rtbuddyv2_protocol_version = 10;
                  break;
-@@ -1712,6 +1895,15 @@ static void t8030_machine_init(MachineState *machine)
+@@ -1712,6 +1912,15 @@ static void t8030_machine_init(MachineState *machine)
                                                  &tms->bootinfo.trustcache_size);
      data = 24000000;
      set_dtb_prop(tms->device_tree, "clock-frequency", 4, &data);
@@ -511,7 +558,7 @@ index fd0ce37..71db14b 100644
      child = find_dtb_node(tms->device_tree, "arm-io");
      assert(child != NULL);
  
-@@ -1773,49 +1965,59 @@ static void t8030_machine_init(MachineState *machine)
+@@ -1773,49 +1982,59 @@ static void t8030_machine_init(MachineState *machine)
  
      t8030_create_aic(machine);
  
@@ -595,10 +642,28 @@ index fd0ce37..71db14b 100644
      tms->init_done_notifier.notify = t8030_machine_init_done;
      qemu_add_machine_init_done_notifier(&tms->init_done_notifier);
 diff --git a/hw/arm/xnu.c b/hw/arm/xnu.c
-index 2ca4983..abd0b0f 100644
+index 2ca4983..12fb605 100644
 --- a/hw/arm/xnu.c
 +++ b/hw/arm/xnu.c
-@@ -43,6 +43,7 @@ static const char *KEEP_COMP[] = {
+@@ -37,12 +37,25 @@
+ struct mach_header_64 *xnu_header;
+ 
+ static const char *KEEP_COMP[] = {
++    /* sn0w T8006: the DT filter removes any node whose `compatible` is not
++     * whitelisted. The upstream list had s8000/t8030/t8015 variants but NO
++     * t8006/t8002 ones, so the ENTIRE /arm-io subtree (compatible
++     * "arm-io,t8006") -- including the AIC, pmgr, gpio, i2c, wdt, the IOP
++     * coprocessors, etc. -- was being stripped from the DT the kernel sees.
++     * That left gIODTPHandles empty, so the IODeviceTree interrupt resolver
++     * NULL-dereffed on the CPUs' interrupt-parent phandle 0x10 (the AIC). Keep
++     * the T8006/T8002 nodes. */
++    "arm-io,t8006\0$", "pmgr1,t8006\0$", "gpio,t8006\0$",
++    "i2c,t8006\0$", "wdt,t8006\0$", "aic,t8006\0$",
++    "dockchannel,t8002\0$", "dockchannel-uart\0$",
++    "mcc,t8006\0$", "error-handler,t8006\0$",
+     "uart-1,samsung\0$",
+     "N71AP\0iPhone8,1\0AppleARM\0$", "arm-io,s8000\0$",
+     "N104AP\0iPhone12,1\0AppleARM\0$", "arm-io,t8030\0$",
      "N104DEV\0iPhone12,1\0AppleARM\0$",
      "apple,twister\0ARM,v8\0$",
      "apple,thunder\0ARM,v8\0$", "apple,lightning\0ARM,v8\0$",
@@ -606,7 +671,7 @@ index 2ca4983..abd0b0f 100644
      "aic,1\0$",
      "pmgr1,s8000\0$",
      "pmgr1,t8030\0$",
-@@ -74,7 +75,9 @@ static const char *KEEP_COMP[] = {
+@@ -74,7 +87,9 @@ static const char *KEEP_COMP[] = {
  
  static const char *REM_NAMES[] = {
      "backlight\0$",

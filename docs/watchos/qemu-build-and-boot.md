@@ -379,6 +379,44 @@ accepts REA's `-N -q -c` invocation and the core `aa`/`aar`/`axt`/`af`/`pdf`/`pd
 commands, and loads this fileset kernelcache natively with arm64e fixups). Use
 it like `rea-r2.sh execute-rizin-command <kc> '<r2 commands>'`.
 
+### BREAKTHROUGH: console works, the AIC registers, the core deadlock is broken
+
+The entire blind-hang / IOKit-matching-deadlock that blocked every prior session
+had **one** root cause: the fork's DeviceTree filter (`xnu.c macho_dtb_node_process`)
+removes any node whose `compatible` is not in `KEEP_COMP`, and the list carried
+only `arm-io,s8000` / `arm-io,t8030` — **not** `arm-io,t8006`. So the whole
+`/arm-io` subtree (the AIC, PMGR, GPIO, I2C, the IOP coprocessors, **and the
+DockChannel console node**) was being stripped from the DT the kernel sees. With
+no AIC node, `gIODTPHandles` was empty and the IODeviceTree interrupt resolver
+NULL-dereffed on the CPUs' `interrupt-parent` phandle `0x10` (the reason the
+resolver no-op bandaid was needed); with no `dockchannel-uart` node the serial
+console never came up (the whole reason we were blind).
+
+- **Fix 1 — `KEEP_COMP` (xnu.c):** add the T8006/T8002 compatibles
+  (`arm-io,t8006`, `pmgr1,t8006`, `gpio,t8006`, `i2c,t8006`, `wdt,t8006`,
+  `aic,t8006`, `dockchannel,t8002`, `dockchannel-uart`, `mcc,t8006`,
+  `error-handler,t8006`). `/arm-io` and its children now survive → **the
+  DockChannel console produces output** (we can finally read the kernel/panic log)
+  and boot reaches `AppleInterruptController::start`.
+- **Fix 2 — ipid-mask (t8030.c `t8030_create_aic`):** pad the aic node's
+  `ipid-mask` from 52 → 56 bytes. `apple_aic_create` rounds `numEIR` up to an even
+  14 (`(len/4+1)&~1`), so the modelled AIC advertises 14 EIRs / 448 IRQs via
+  `rAIC_INFO`, and `AppleInterruptController::start` then demands a `numEIR*4 = 56`
+  byte mask ("length is 52 but should be 56", `AppleInterruptControllerV1.cpp:128`).
+  → **the AIC driver starts and registers** (`_aicVersion=2`,
+  `_aicNumExtInts=0x1c0`, `_aicNumIPIs=4`). The interrupt-controller deadlock is
+  **broken**.
+
+Boot now runs visibly through corecrypto/FIPS (all PASSED), AppleCredentialManager,
+Darwin Image4, `AppleT8006IO::start` (chip-revision B1), and the AIC, then stops
+at the next blocker: **`ApplePMGR::initDriver` (`ApplePMGR.cpp:860`, "REQUIRE
+failed: `_optionalBridges & (0x1 << i)`")** — a T8006 PMGR bridge-config mismatch
+(the pmgr node has 24 `reg` bridges; a mandatory one is absent from the driver's
+mapped set). Debugging is now fast: run, read `con.log`, see the exact panic
+string with `file:line`. Tooling for the kernelcache RE is driven through
+radare2 (`tools/.../port/rea-r2.sh`, with `pdg`/`pdd`) plus the Apple open-source
+`xnu-6153.141.1` for struct/mechanism reference.
+
 ### How to diagnose a boot crash
 
 `-serial file:con.log -D dbg.log -d int,guest_errors,unimp` gives the exception
