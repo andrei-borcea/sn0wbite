@@ -369,6 +369,16 @@ services so they match. Tooling: `thread_block` tracer + fp-chain unwinder in
 scratch (`tblock_trace.py`, `unwind_block.py`); PAC-strip a stacked return addr
 with `(x & 0xffffffffff) | 0xfffffff000000000`, never a bare 48-bit mask.
 
+### RE tooling: REA driven by radare2
+
+REA's analysis providers are Ghidra/Hopper/IDA/Kuna (no radare2 slot), but its
+rizin-backed commands (`execute-rizin-command`, `debug-with-rizin`) resolve the
+`rizin` executable from `PATH`. [`tools/.../port/rea-r2.sh`](../../tools/opwwe231/watchos/port/rea-r2.sh)
+shims `rizin` → `r2` on `PATH` so those commands run **radare2** instead (it
+accepts REA's `-N -q -c` invocation and the core `aa`/`aar`/`axt`/`af`/`pdf`/`pd`
+commands, and loads this fileset kernelcache natively with arm64e fixups). Use
+it like `rea-r2.sh execute-rizin-command <kc> '<r2 commands>'`.
+
 ### How to diagnose a boot crash
 
 `-serial file:con.log -D dbg.log -d int,guest_errors,unimp` gives the exception
