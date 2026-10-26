@@ -1,0 +1,81 @@
+# EXPERIMENT #16: AMFI _vnode_check_signature → always trust-cache.
+#
+# Pivots from the exp15 negative result: shared_region_map_and_slide_setup
+# is never reached, so the rejection is upstream in AMFI's own vnode
+# signature hook. Rather than instrumenting that function to understand
+# which exact gate rejects the adhoc dyld_shared_cache_arm64e, we
+# short-circuit it: every invocation writes {trust=1, "trust-cache"} to
+# the output pointer *a4 and returns 0 (KERN_SUCCESS). This mirrors the
+# function's own success path for genuine trust-cache content (see the
+# AMFI code at VA 0xFFFFFFF00893DE1C, which performs the identical
+# ADRL "trust-cache" / MOV W1,#1 / BL sub_FFFFFFF00893BFD0 sequence we
+# emit from the trampoline below).
+#
+# Why not patch at the function entry's single instruction?
+#   The entry has `BTI c` (0x5F2403D5) and is reached via `BLRAA` from
+#   the MAC-framework dispatcher. ARMv8.5 BTI requires an indirect-call
+#   target to be a `BTI c` landing pad; replacing that first instruction
+#   with anything else makes the next BLRAA invocation trap as "Kernel
+#   BTI failure" (exp10 learned this the hard way). We therefore keep
+#   `BTI c` at offset 0 and only replace `PACIBSP` at offset +4 with a
+#   branch to the pad trampoline, which does its own `BL` to the
+#   trust-category setter.
+#
+# Expected outcomes (ranked by what the serial log shows):
+#   (a) `launchd` bootstraps past dyld, SpringBoard-less userspace
+#       starts coming up → the AMFI reject was the sole blocker.
+#   (b) `launchd` reaches further than previous experiments but then
+#       dies on a different validator (e.g., Launch Constraint via
+#       exp14's site, or a BAD_MACHO second validator). Compose with
+#       the appropriate downstream patch and re-boot.
+#   (c) Kernel panics earlier → always-trust-cache violates some
+#       assumption (e.g., APFS trust-cache boot path). Revert and
+#       narrow the patch to only apply when the vnode's path or
+#       cs_blob flags match the dyld shared cache signature.
+#
+# Trampoline (36 bytes, placed in the zero-filled pad verified at VA
+# 0xFFFFFFF00A1D4778 / file 0x31D0778, size 0xF58):
+#
+#   stp  x29, x30, [sp,#-0x10]!   ; preserve caller's PAC-signed LR
+#   mov  x0,  x3                  ; a4 (output ptr) → arg 1
+#   adrp x2,  0xFFFFFFF0074B9000  ; → "trust-cache"
+#   add  x2,  x2,  #0xF46
+#   movz w1,  #1
+#   bl   0xFFFFFFF00893BFD0       ; sub_FFFFFFF00893BFD0: trust setter
+#   ldp  x29, x30, [sp], #0x10
+#   movz x0,  #0                  ; return 0
+#   ret
+#
+# Apply over the 9-patch APFS base (manifest-watch7_11-27.0.1.yaml). The
+# two patched regions (0xFFFFFFF00A1D4778 pad and 0xFFFFFFF00893DA34
+# PACIBSP) are both stock in that base.
+#
+#   patchkit.py apply <bootkc.base9> \
+#     -m manifest-exp16-amfi-trustcache.yaml \
+#     -o bootkc.exp16
+
+va_base:       0xFFFFFFF007E2C000
+file_text_off: 0xE28000
+
+patches:
+  - name: exp16-trust-cache-trampoline
+    effect: >
+      install the trust-cache trampoline at pad VA
+      0xFFFFFFF00A1D4778: STP X29/X30 save, MOV X0,X3, ADRP+ADD
+      "trust-cache", MOVZ W1,#1, BL sub_FFFFFFF00893BFD0, LDP restore,
+      MOVZ X0,#0, RET (36 bytes total).
+    va:    0xFFFFFFF00A1D4778
+    orig:  "000000000000000000000000000000000000000000000000000000000000000000000000"
+    new:   "fd7bbfa9e00303aa2297feb042183d9121008052119e9d97fd7bc1a8000080d2c0035fd6"
+
+  - name: exp16-amfi-vcs-hook
+    effect: >
+      replace PACIBSP at offset +4 of _vnode_check_signature
+      (0xFFFFFFF00893DA34) with B 0xFFFFFFF00A1D4778, keeping the
+      BTI c landing pad at the function entry so MACF BLRAA keeps
+      a valid indirect-call target.
+    va:    0xFFFFFFF00893DA34
+    orig:  "7f2303d5"
+    new:   "515b6214"
+
+scanners: []
