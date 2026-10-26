@@ -1,0 +1,34 @@
+# EXPERIMENT #11: force "unsuitable CT policy" gate to always skip the reject
+#
+# The reject block that prints "AMFI: '%s': unsuitable CT policy …" and sets
+# the trust word to 0 lives at 0x893E5C4..0x893E5E8. It is reached only when
+# BOTH of these fall through:
+#   0x893E5BC  B.NE  0x893E5EC   (if TST X22, #0x18000001FF80 != 0 → skip)
+#   0x893E5C0  TBNZ W23, #0, 0x893E5EC
+#
+# For an adhoc shared cache X22 (trust bitmap) == 0 and W23 bit 0 == 0, so
+# both branches fall through and the reject fires. Converting the first
+# conditional B.NE into an UNCONDITIONAL B to the same target makes the reject
+# block unreachable, regardless of the trust bitmap. The TBNZ then becomes
+# dead but harmless. The function continues at 0x893E5EC with the normal
+# post-CT path (which may further set bits in W19/trust and reach the
+# dynamic / platform success handlers downstream).
+#
+# Expected: "unsuitable CT policy" message disappears from the serial log.
+# AMFI then feeds a non-zero trust to the shared-region map, which may or
+# may not satisfy its own tier check.
+#
+# Apply AFTER the base9 manifest, on an already-patched bootkc:
+#   patchkit.py apply bootkc.base9 -m manifest-exp11-amfi-ct-bypass.yaml -o bootkc
+
+va_base:       0xFFFFFFF007E2C000
+file_text_off: 0xE28000
+
+patches:
+  - name: amfi-vcs-ct-gate-force-skip
+    effect: "turn `B.NE 0x893E5EC` into unconditional `B 0x893E5EC`, bypassing the AMFI 'unsuitable CT policy' reject block"
+    va:    0xFFFFFFF00893E5BC
+    orig:  "81010054"   # B.NE +0x30 (cond=1 NE, imm19=12)
+    new:   "0c000014"   # B    +0x30 (imm26=12)
+
+scanners: []

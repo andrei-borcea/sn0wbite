@@ -1,0 +1,55 @@
+# EXPERIMENT #10: AMFI vnode_check_signature → stub that always returns 0
+#
+# Rationale: previous session showed that making AMFI reach its success path
+# (via LODWORD(v31)=1) wrote a "dynamic" trust category into *a4, which the
+# downstream VM shared region validation refuses for an adhoc shared cache.
+# This experiment goes one notch further and makes AMFI entirely inert: the
+# very first two instructions of the hook become `MOV X0, #0 ; RET`, so the
+# function returns success without touching the cs_blob or output pointers.
+#
+# Expected outcomes to distinguish during boot:
+#   (a) kernel panics before launchd exec:
+#       AMFI is required to populate some structure before downstream code
+#       dereferences it; the stub must at least initialise *a4.
+#   (b) same "AMFI: ... adhoc signed" log disappears, launchd still dies with
+#       shared_region_check_np -1 errno 12:
+#       the real decision point is downstream (shared_region_map_and_slide_
+#       setup); AMFI alone is not sufficient.
+#   (c) launchd bootstraps further / spawns dyld successfully:
+#       AMFI was in fact the only gate; iterate on the next failure.
+#
+# Apply this manifest ON TOP of the already-patched bootkc:
+#   patchkit.py apply <already-patched-bootkc> \
+#     -m manifest-exp10-amfi-stub.yaml \
+#     -o <exp10-bootkc> --no-verify   # (--no-verify because baseline differs)
+# — OR — compose it with the reference manifest in two passes.
+
+va_base:       0xFFFFFFF007E2C000
+file_text_off: 0xE28000
+
+patches:
+  # First attempt (DISABLED, kept for post-mortem): naive return-zero stub.
+  # Boot result 2026-10-26: Kernel BTI failure (BTYPE=0x0002) at pc 0x893DA30
+  # as soon as AMFI was called via BLR, because the stub overwrote the
+  # BTI c marker that guards indirect-branch targets on ARMv8.5. Lesson:
+  # every stub into this function MUST preserve the BTI c first instruction.
+  - name: amfi-vcs-return-zero-stub-naive
+    disabled: true
+    effect: "overwrite the prolog with (MOV X0,#0; RET) — breaks BTI, panics the kernel"
+    va:    0xFFFFFFF00893DA30
+    orig:  "5f2403d57f2303d5"   # BTI c (D503245F) ; PACIBSP (D503237F)
+    new:   "000080d2c0035fd6"   # MOV X0, #0 (D2800000) ; RET (D65F03C0)
+
+  # Second attempt: BTI-safe and semantically faithful. Instead of stubbing the
+  # function body, NOP the CBZ at the decision point (same site identified
+  # by Hex-Rays as the AMFI gate between success and the "untrusted" write).
+  # This mimics the previous session's `LODWORD(v31) = 1` patch but at the
+  # branch site itself, so every signature — adhoc or otherwise — reaches
+  # the dynamic-trust success path. Full function prolog/BTI untouched.
+  - name: amfi-vcs-cbz-nop
+    effect: "nop the CBZ W22, loc_0x893E7C8 so every call falls through to the dynamic-trust success path regardless of the trust bitmap"
+    va:    0xFFFFFFF00893E750
+    orig:  "d6030034"   # CBZ W22, +0x78
+    new:   "1f2003d5"   # NOP
+
+scanners: []

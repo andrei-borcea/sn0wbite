@@ -1,0 +1,140 @@
+# EXPERIMENT #12: bulk-flip every `MOV Wd, #22` inside
+# shared_region_map_and_slide_setup (sub_FFFFFFF009F79CA8, 0x27A0 bytes)
+# to `MOV Wd, #0`. There are 30 such sites — the function's return value
+# register (W25) is loaded with EINVAL from each of the 11 Hex-Rays-level
+# rejection branches; those collapse to many more asm sites because the
+# compiler duplicated the setup across cleanup paths. Flipping them all
+# forces every rejection path to return KERN_SUCCESS instead.
+#
+# This is empirical: a single boot tells us whether downstream code can
+# tolerate a "success" where the mapping is in fact only partially set up.
+# If the kernel panics on dereferencing an unset mapping, we know which
+# invariant was load-bearing and can disable only that one.
+
+va_base:       0xFFFFFFF007E2C000
+file_text_off: 0xE28000
+
+patches:
+  - name: einval-to-zero-site-01-W25
+    va:    0xFFFFFFF009F7A0D8
+    orig:  "d9028052"
+    new:   "19008052"
+  - name: einval-to-zero-site-02-W25
+    va:    0xFFFFFFF009F7A108
+    orig:  "d9028052"
+    new:   "19008052"
+  - name: einval-to-zero-site-03-W25
+    va:    0xFFFFFFF009F7A134
+    orig:  "d9028052"
+    new:   "19008052"
+  - name: einval-to-zero-site-04-W25
+    va:    0xFFFFFFF009F7A140
+    orig:  "d9028052"
+    new:   "19008052"
+  - name: einval-to-zero-site-05-W3
+    va:    0xFFFFFFF009F7A53C
+    orig:  "c3028052"
+    new:   "03008052"
+  - name: einval-to-zero-site-06-W25
+    va:    0xFFFFFFF009F7A964
+    orig:  "d9028052"
+    new:   "19008052"
+  - name: einval-to-zero-site-07-W25
+    va:    0xFFFFFFF009F7A9A4
+    orig:  "d9028052"
+    new:   "19008052"
+  - name: einval-to-zero-site-08-W25
+    va:    0xFFFFFFF009F7A9E0
+    orig:  "d9028052"
+    new:   "19008052"
+  - name: einval-to-zero-site-09-W25
+    va:    0xFFFFFFF009F7AB28
+    orig:  "d9028052"
+    new:   "19008052"
+  - name: einval-to-zero-site-10-W25
+    va:    0xFFFFFFF009F7B0E4
+    orig:  "d9028052"
+    new:   "19008052"
+  - name: einval-to-zero-site-11-W25
+    va:    0xFFFFFFF009F7B20C
+    orig:  "d9028052"
+    new:   "19008052"
+  - name: einval-to-zero-site-12-W25
+    va:    0xFFFFFFF009F7B214
+    orig:  "d9028052"
+    new:   "19008052"
+  - name: einval-to-zero-site-13-W25
+    va:    0xFFFFFFF009F7B404
+    orig:  "d9028052"
+    new:   "19008052"
+  - name: einval-to-zero-site-14-W25
+    va:    0xFFFFFFF009F7B430
+    orig:  "d9028052"
+    new:   "19008052"
+  - name: einval-to-zero-site-15-W25
+    va:    0xFFFFFFF009F7B600
+    orig:  "d9028052"
+    new:   "19008052"
+  - name: einval-to-zero-site-16-W25
+    va:    0xFFFFFFF009F7B638
+    orig:  "d9028052"
+    new:   "19008052"
+  - name: einval-to-zero-site-17-W25
+    va:    0xFFFFFFF009F7B670
+    orig:  "d9028052"
+    new:   "19008052"
+  - name: einval-to-zero-site-18-W25
+    va:    0xFFFFFFF009F7BA74
+    orig:  "d9028052"
+    new:   "19008052"
+  - name: einval-to-zero-site-19-W25
+    va:    0xFFFFFFF009F7BEDC
+    orig:  "d9028052"
+    new:   "19008052"
+  - name: einval-to-zero-site-20-W25
+    va:    0xFFFFFFF009F7BF64
+    orig:  "d9028052"
+    new:   "19008052"
+  - name: einval-to-zero-site-21-W25
+    va:    0xFFFFFFF009F7BF78
+    orig:  "d9028052"
+    new:   "19008052"
+  - name: einval-to-zero-site-22-W25
+    va:    0xFFFFFFF009F7BFFC
+    orig:  "d9028052"
+    new:   "19008052"
+  - name: einval-to-zero-site-23-W25
+    va:    0xFFFFFFF009F7C028
+    orig:  "d9028052"
+    new:   "19008052"
+  - name: einval-to-zero-site-24-W25
+    va:    0xFFFFFFF009F7C09C
+    orig:  "d9028052"
+    new:   "19008052"
+  - name: einval-to-zero-site-25-W25
+    va:    0xFFFFFFF009F7C0C8
+    orig:  "d9028052"
+    new:   "19008052"
+  - name: einval-to-zero-site-26-W25
+    va:    0xFFFFFFF009F7C1AC
+    orig:  "d9028052"
+    new:   "19008052"
+  - name: einval-to-zero-site-27-W25
+    va:    0xFFFFFFF009F7C2CC
+    orig:  "d9028052"
+    new:   "19008052"
+  - name: einval-to-zero-site-28-W25
+    va:    0xFFFFFFF009F7C2F8
+    orig:  "d9028052"
+    new:   "19008052"
+  - name: einval-to-zero-site-29-W25
+    va:    0xFFFFFFF009F7C39C
+    orig:  "d9028052"
+    new:   "19008052"
+  - name: einval-to-zero-site-30-W25
+    va:    0xFFFFFFF009F7C3C8
+    orig:  "d9028052"
+    new:   "19008052"
+
+scanners: []
+

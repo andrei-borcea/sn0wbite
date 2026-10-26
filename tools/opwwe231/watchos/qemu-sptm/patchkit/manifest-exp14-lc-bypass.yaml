@@ -1,0 +1,27 @@
+# EXPERIMENT #14: bypass AMFI Launch Constraint enforcement
+#
+# The restore ramdisk's launchd correctly spawns xpcproxy for com.jprx.bash
+# (plist perms OK, trust cache OK, codesign OK), but then AMFI's Launch
+# Constraint check at sub_FFFFFFF00893A23C (0x560 bytes) rejects /bin/bash
+# with "AMFI: Launch Constraint Violation (enforcing), error info:
+# c[8]p[1]m[5]e[5], (in-tc-with-constraint-category) launching /bin/bash".
+#
+# The LC check function has many branches that all call the violation
+# printer sub_FFFFFFF00893A830 and return. The only clean-return path is
+# line 192 (return 0). Patch the function prolog to return 0 unconditionally.
+#
+# BTI c first instruction is preserved (ARMv8.5 branch target identification
+# — if replaced, the kernel panics with "Kernel BTI failure" when the hook
+# is invoked via BLR, as we learned in EXP10).
+
+va_base:       0xFFFFFFF007E2C000
+file_text_off: 0xE28000
+
+patches:
+  - name: amfi-lc-check-return-zero
+    effect: "replace the AMFI launch-constraint hook (sub_FFFFFFF00893A23C) prolog with (BTI c; MOV X0,#0; RET; NOP) so every launch constraint check passes"
+    va:    0xFFFFFFF00893A23C
+    orig:  "5f2403d57f2303d5ff4305d1fc6f10a9"
+    new:   "5f2403d5000080d2c0035fd61f2003d5"
+
+scanners: []

@@ -1,0 +1,28 @@
+# EXPERIMENT #13: force the MAC vnode_check_signature wrapper to treat every
+# invocation as "no fatal failure", regardless of what AMFI wrote into the
+# fatal_failure_desc_len output parameter (v38).
+#
+# The wrapper lives at sub_FFFFFFF00A199B44 (0x444 bytes). After calling each
+# registered MAC hook (AMFI), at 0xFFFFFFF00A199CD4 it does:
+#   CBZ X8, 0xA199EE4   ; if (v38 == 0) goto LABEL_61  (clean return)
+# Falling through means "the hook flagged this as fatal even if it returned 0"
+# → the signature registration fails downstream even though AMFI returned 0.
+#
+# Patch: convert the CBZ to an unconditional branch to the same target, so
+# the fatal-handling block is NEVER taken.
+#
+# Combined with exp10 (AMFI CBZ W22 nop) and exp11 (CT gate skip), AMFI
+# returns 0 cleanly AND the wrapper no longer promotes the fatal-flag to
+# failure, so cs_shared_region_create should accept the adhoc shared cache.
+
+va_base:       0xFFFFFFF007E2C000
+file_text_off: 0xE28000
+
+patches:
+  - name: mac-vcs-fatal-force-skip
+    effect: "turn `CBZ X8, 0xA199EE4` into unconditional `B 0xA199EE4` so the wrapper never enters the fatal-flag handling block"
+    va:    0xFFFFFFF00A199CD4
+    orig:  "881000b4"   # CBZ X8, +0x210
+    new:   "84000014"   # B    +0x210
+
+scanners: []
