@@ -129,8 +129,8 @@ early boot.
 The `t8030` machine did not even start the vCPU on T8006: its device setup
 asserted/crashed on DeviceTree differences before the first instruction, and
 once that was cleared the CPU trapped on Apple registers the A13 model lacks.
-The adaptation ([t8006-adaptation.patch](../../tools/opwwe231/watchos/qemu/t8006-adaptation.patch),
-status in its [README](../../tools/opwwe231/watchos/qemu/README.md)) works the chain:
+The adaptation ([t8006-adaptation.patch](../../tools/watchos/qemu/t8006-adaptation.patch),
+status in its [README](../../tools/watchos/qemu/README.md)) works the chain:
 
 1. **CPU model.** `apple_a13_cpu_create` crashed reading `cluster-id`/`cluster-type`
    (A13 is big.LITTLE; single-cluster Tempest has neither). Made optional. **Done.**
@@ -146,7 +146,7 @@ status in its [README](../../tools/opwwe231/watchos/qemu/README.md)) works the c
    `msr s3_4_c15_c2_1` (a 2-instruction write thunk at `0xfffffff008b44010`, REA
    `ev_a791894f…`) — an Apple IMPDEF register (`op0=3,CRn=15`) the A13 model does
    not implement, so QEMU raised Undefined Instruction and the CPU spun in its
-   vector. Fixed by the modular **[sn0w CPU layer](../../tools/opwwe231/watchos/qemu/sn0w/)**,
+   vector. Fixed by the modular **[sn0w CPU layer](../../tools/watchos/qemu/sn0w/)**,
    which RAZ/WIs the whole Apple IMPDEF space (the A13's real registers still
    override their own encodings). **Done:** the kernel now runs deep into early
    boot — it sets PAN and performs per-CPU PPL lookups keyed on `MPIDR_EL1 & 0xff`.
@@ -329,7 +329,7 @@ nothing makes it runnable, so the idle loop spins forever and no console banner 
 printed.
 
 **Pinpointed (via a rebuilt symbol map).** The kernelcache is stripped
-(`nm` → 0 symbols), so [`tools/.../port/symbolicate.py`](../../tools/opwwe231/watchos/port/symbolicate.py)
+(`nm` → 0 symbols), so [`tools/.../port/symbolicate.py`](../../tools/watchos/port/symbolicate.py)
 rebuilds an address→name map from `__func__` strings (a C-identifier `__cstring`
 referenced by exactly one function names it): **6278 functions named**. An
 `assert_wait` tracer (lldb breakpoint callback at `assert_wait = 0x…07844d6c`,
@@ -447,7 +447,7 @@ with `(x & 0xffffffffff) | 0xfffffff000000000`, never a bare 48-bit mask.
 
 REA's analysis providers are Ghidra/Hopper/IDA/Kuna (no radare2 slot), but its
 rizin-backed commands (`execute-rizin-command`, `debug-with-rizin`) resolve the
-`rizin` executable from `PATH`. [`tools/.../port/rea-r2.sh`](../../tools/opwwe231/watchos/port/rea-r2.sh)
+`rizin` executable from `PATH`. [`tools/.../port/rea-r2.sh`](../../tools/watchos/port/rea-r2.sh)
 shims `rizin` → `r2` on `PATH` so those commands run **radare2** instead (it
 accepts REA's `-N -q -c` invocation and the core `aa`/`aar`/`axt`/`af`/`pdf`/`pd`
 commands, and loads this fileset kernelcache natively with arm64e fixups). Use

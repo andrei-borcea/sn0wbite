@@ -2,9 +2,9 @@
 
 Target: **OnePlus Watch 2**, Android 14, build **A.192.260910**, bootloader unlocked, root through Magisk.
 
-Narrative and design: [Custom recovery](../../../docs/custom-boot/custom-recovery.md),
-[Live boot screen](../../../docs/custom-boot/boot-screen.md) and
-[Hardware buttons](../../../docs/device/hardware-buttons.md). The built images are in
+Narrative and design: [Custom recovery](../../../docs/opwwe231/custom-recovery.md),
+[Live boot screen](../../../docs/opwwe231/boot-screen.md) and
+[Hardware buttons](../../../docs/opwwe231/hardware-buttons.md). The built images are in
 [releases/opwwe231](../../../releases/opwwe231/README.md).
 
 | File | Contents |

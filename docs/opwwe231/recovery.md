@@ -15,7 +15,7 @@ left as originally written for that record, with this note as the correction.
 
 **Update, 24 October 2026: the watch now runs a custom recovery.** The sections below are about the stock recovery and
 brick routes. For the menu we built in the `recovery` partition, and the rules we learned about its size, the BCB and the
-display, see [Custom recovery](../custom-boot/custom-recovery.md).
+display, see [Custom recovery](./custom-recovery.md).
 
 The [fastboot evidence](../../research/opwwe231/2026-10-20-a192/fastboot-excerpts.txt)
 records the locked bootloader and unsupported partition readback. The EDL

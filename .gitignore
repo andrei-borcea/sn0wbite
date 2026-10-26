@@ -8,3 +8,7 @@
 # Python bytecode cache.
 __pycache__/
 *.pyc
+
+# Local-only scratchpad: large binary firmware artefacts, build intermediates,
+# session dumps. Preserved for reproducibility but not committed (Apple IP + size).
+/.scratchpad-local/

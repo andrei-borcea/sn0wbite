@@ -1,7 +1,7 @@
 # QEMU T8006 adaptation (work in progress)
 
 `t8006-adaptation.patch` is applied on top of the `qemu-t8030` fork (see
-[build & boot](../../../../docs/watchos/qemu-build-and-boot.md)) to run our
+[build & boot](../../../docs/watchos/qemu-build-and-boot.md)) to run our
 watchOS 6.3.1 (Watch5,4 / T8006) kernelcache on its `t8030` machine. It is the
 incremental machine/CPU adaptation toward kernel console output (phase 2c).
 

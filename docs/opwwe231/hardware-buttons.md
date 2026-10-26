@@ -51,7 +51,7 @@ How it works:
   as a short press (screen off), so the watcher wakes the screen and shows the menu again. The module also sets the AOSP setting
   to `0` so the framework's own path stays off.
 - **Recovery now lands in our recovery.** The module also overrides `/vendor/bin/install-recovery.sh` with a no-op, so Android
-  stops rebuilding the stock recovery at every boot (see [Custom recovery](../custom-boot/custom-recovery.md)).
+  stops rebuilding the stock recovery at every boot (see [Custom recovery](./custom-recovery.md)).
 
 Things that cost time:
 

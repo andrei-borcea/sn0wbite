@@ -104,4 +104,4 @@ The menu logic can be tested without flashing: `src/test_sim9.sh` runs it in `--
 - There is no payload yet. Candidates are an image in a spare partition loaded from Android.
 - The stock recovery entry starts it with no arguments (the "No command" screen); the effect of its `--bootmenu` option is
   not analysed.
-- The menu on the running watch that opens this recovery is described in [Hardware buttons](../device/hardware-buttons.md).
+- The menu on the running watch that opens this recovery is described in [Hardware buttons](./hardware-buttons.md).

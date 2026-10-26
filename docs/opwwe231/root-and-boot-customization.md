@@ -4,7 +4,7 @@ Research date: **21 October 2026**. Target: **OPWWE231 A.192**, bootloader state
 transitioned from locked to **unlocked (orange)** during this session.
 
 **Update, 24 October 2026.** The boot animation described here was replaced by a live verbose boot screen
-([Boot screen](../custom-boot/boot-screen.md)), the patched `init_boot` is published in
+([Boot screen](./boot-screen.md)), the patched `init_boot` is published in
 [releases](../../releases/opwwe231/README.md), and the on-device patch recipe is a script,
 [`patch_init_boot_on_watch.sh`](../../tools/opwwe231/magisk/patch_init_boot_on_watch.sh). The Magisk scripts used here are the
 unmodified upstream ones; only the binaries' architecture matters.

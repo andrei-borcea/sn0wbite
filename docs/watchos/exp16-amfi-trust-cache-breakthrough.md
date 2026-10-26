@@ -8,7 +8,7 @@ blocker shifts from AMFI's shared-cache verdict to the Mach-O load-time
 validator (OS_REASON_EXEC code 1 = BAD_MACHO) on a later exec in
 launchd's startup.
 **Base:** `bootkc.before-exp10` (9-patch APFS/md chain)
-**Manifest:** `tools/opwwe231/watchos/qemu-sptm/patchkit/manifest-exp16-amfi-trustcache.yaml`
+**Manifest:** `tools/watchos/qemu-sptm/patchkit/manifest-exp16-amfi-trustcache.yaml`
 **Patched sha256:** `71af5c041c0dcbe0...` (`bootkc.exp16`)
 **Composite sha256 (+ exp14):** `6a1624cb6bb7dda7...` — the LC bypass
 alone does **not** move the needle past this new blocker (confirmed by
@@ -122,7 +122,7 @@ no-op `return 0`.
 
 ```
 patchkit.py apply <bootkc.before-exp10> \
-  -m tools/opwwe231/watchos/qemu-sptm/patchkit/manifest-exp16-amfi-trustcache.yaml \
+  -m tools/watchos/qemu-sptm/patchkit/manifest-exp16-amfi-trustcache.yaml \
   -o bootkc.exp16          # → sha256 71af5c041c0dcbe0…
 # boot: expect no AMFI shared-cache reject lines; expect
 #       Identified Serial Port qemuport0..3; expect init[1] fatal

@@ -5,7 +5,7 @@ Measured **24 October 2026** on **OPWWE231 A.192**. This note extends the
 
 ## What the cores implement
 
-[`cpuprobe`](../../tools/opwwe231/watchos/probe/cpuprobe.c) is a static aarch64 program (the kernel runs 64-bit code even though the
+[`cpuprobe`](../../tools/watchos/probe/cpuprobe.c) is a static aarch64 program (the kernel runs 64-bit code even though the
 Android userspace is 32-bit). It reads the ID registers through the kernel's EL0 emulation (`HWCAP_CPUID`, set on this kernel).
 
 | Register field | Value | Meaning |
@@ -26,7 +26,7 @@ The bootloader has no RAM boot: `fastboot boot` answers `unknown command` (check
 43,565,056 bytes). Every experiment that needs the bootloader to load another image has to use a partition the loader reads:
 `boot`, or `recovery` (the loader accepts a recovery image that carries its own kernel, see the
 [second boot slot findings](./watchos-boot-and-isa-analysis.md#target-side-findings-for-a-second-boot-slot)).
-A reset must then lead back to Android, which the BCB rules in [Custom recovery](../custom-boot/custom-recovery.md) make possible.
+A reset must then lead back to Android, which the BCB rules in [Custom recovery](../opwwe231/custom-recovery.md) make possible.
 
 ## What this means
 

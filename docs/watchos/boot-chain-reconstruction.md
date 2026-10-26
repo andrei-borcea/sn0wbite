@@ -41,8 +41,8 @@ At entry the kernel expects:
   | `ldr x25,[x20,#0x20]` | 0x20 | `topOfKernelData` (scratch base for the kernel's own page tables) |
   | `ldr x26,[x20,#0x2d0]` | 0x2d0 | an arm64e field used by the early PAC/rebase path (name unconfirmed) |
 
-  The full layout is in [`boot_args.h`](../../tools/opwwe231/watchos/bootargs/boot_args.h); `deviceTreeP` is at 0x60,
-  `CommandLine` at 0x6c. [`mk_bootargs`](../../tools/opwwe231/watchos/bootargs/mk_bootargs.c) emits this struct.
+  The full layout is in [`boot_args.h`](../../tools/watchos/bootargs/boot_args.h); `deviceTreeP` is at 0x60,
+  `CommandLine` at 0x6c. [`mk_bootargs`](../../tools/watchos/bootargs/mk_bootargs.c) emits this struct.
 
 - The kernel **builds its own page tables** at `topOfKernelData` in **16 KB-granule** form: the table stride is `4, lsl 12`
   (0x4000 = 16 KB) and the block mappings are `0x2000000` (32 MB, the 16 KB-granule L2 block size), then
@@ -57,7 +57,7 @@ and a `boot_args` in memory, set `x0`, drop to EL1 with MMU/caches off, and bran
 
 `start` runs these unconditionally before the first C function, so on any core that lacks them they trap or mis-execute. To run
 this kernel on the Kryo (A53-class) cores these are the sites to neutralize (confirmed absent on our cores by
-[`cpuprobe`](../../tools/opwwe231/watchos/probe/cpuprobe.c): API/APA/GPA/GPI = 0, LSE = 0):
+[`cpuprobe`](../../tools/watchos/probe/cpuprobe.c): API/APA/GPA/GPI = 0, LSE = 0):
 
 | Site in `start` | Instruction | Requires | On Kryo A53 |
 | --- | --- | --- | --- |
@@ -84,7 +84,7 @@ rebuild the page-table bootstrap, and NOP or trap-emulate every PAC and Apple-IM
 ## Testing the boot in emulation
 
 A generic ARMv8.3 core (QEMU/Unicorn) has the features the real Kryo lacks (PAC, 16 KB granule, LSE), so it is where the
-*software* half of the boot chain is tested before any hardware work. [`emu/boot_harness.py`](../../tools/opwwe231/watchos/emu/boot_harness.py)
+*software* half of the boot chain is tested before any hardware work. [`emu/boot_harness.py`](../../tools/watchos/emu/boot_harness.py)
 (Unicorn) loads the kernelcache segments at their addresses, puts a synthesized `boot_args` in `x0`, and runs the reset vector,
 emulating the Apple IMPDEF and PAC registers live (the patch catalog applied at runtime: `msr` recorded, `mrs` returns the last
 written value, `retaa/retab` -> `ret`).
@@ -117,11 +117,11 @@ patching at all -- only the Apple IMPDEF registers and the device models do. The
 
 ## Tools and next steps
 
-- [`tools/opwwe231/watchos/bootargs/`](../../tools/opwwe231/watchos/bootargs/) — `boot_args.h` (the struct, offsets anchored to
+- [`tools/watchos/bootargs/`](../../tools/watchos/bootargs/) — `boot_args.h` (the struct, offsets anchored to
   the kernel's own loads) and `mk_bootargs.c` (emits the blob a loader puts in `x0`). Verified: the emitted offsets match the
   reset vector's loads exactly.
-- [`tools/opwwe231/watchos/probe/cpuprobe.c`](../../tools/opwwe231/watchos/probe/cpuprobe.c) — reads the core ID registers.
-- [`tools/opwwe231/watchos/emu/boot_harness.py`](../../tools/opwwe231/watchos/emu/boot_harness.py) — runs the reset vector in Unicorn with a synthesized `boot_args`; validates the early boot to MMU-enable.
+- [`tools/watchos/probe/cpuprobe.c`](../../tools/watchos/probe/cpuprobe.c) — reads the core ID registers.
+- [`tools/watchos/emu/boot_harness.py`](../../tools/watchos/emu/boot_harness.py) — runs the reset vector in Unicorn with a synthesized `boot_args`; validates the early boot to MMU-enable.
 - Next REA targets: `arm_init` and `PE_init_platform` (full `boot_args` tail and the DeviceTree parse), then the pmap bootstrap
   (to compare the Apple physical memory map against our DRAM base `0x40000000`), and the AIC/PMGR drivers.
 

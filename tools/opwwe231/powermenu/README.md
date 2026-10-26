@@ -2,7 +2,7 @@
 
 `MenuActivity` and `Tile` are the app (four tiles: Restart, Recovery, Fastboot, Power off). `powerkey.c` is the root watcher that opens it on
 a POWER hold. `module/` and `build_module.sh` make the Magisk module `sn0wbite_powermenu`. Design and findings:
-[Hardware buttons](../../../docs/device/hardware-buttons.md).
+[Hardware buttons](../../../docs/opwwe231/hardware-buttons.md).
 
 ```sh
 ./build.sh                                                  # Android SDK build-tools 34, signs powermenu.apk with a key generated in out/

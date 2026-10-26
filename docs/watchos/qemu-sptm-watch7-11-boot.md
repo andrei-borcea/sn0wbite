@@ -7,7 +7,7 @@
 **Base:** [`jprx/qemu-sptm`](https://github.com/jprx/qemu-sptm) +
   [`jprx/darwin-vm`](https://github.com/jprx/darwin-vm)
 **Patch surface:** two hunks in `dt_fixup.py`, no C changes in qemu-sptm
-  (see `tools/opwwe231/watchos/qemu-sptm/dt_fixup-watch7_11.patch`)
+  (see `tools/watchos/qemu-sptm/dt_fixup-watch7_11.patch`)
 
 ## Result
 
@@ -88,12 +88,12 @@ enabling USB (blocking) with description: standardRestore
 
 ## Reproducing
 
-Full recipe in `tools/opwwe231/watchos/qemu-sptm/README.md`.
+Full recipe in `tools/watchos/qemu-sptm/README.md`.
 
 ## Status vs. earlier Watch5,4 / T8006 bring-up
 
 The earlier `qemu-t8030`-fork Watch5,4 port (see
-`tools/opwwe231/watchos/qemu/`, `docs/watchos/qemu-build-and-boot.md`,
+`tools/watchos/qemu/`, `docs/watchos/qemu-build-and-boot.md`,
 commit `405d36d`) reached its ramdisk mount on an archived 2022 fork of the
 qemu-t8030 tree. The new Watch7,11 / T8310 bring-up on `qemu-sptm` goes
 through a modern SPTM/TXM-aware kernel on 2026-vintage upstream QEMU, and is

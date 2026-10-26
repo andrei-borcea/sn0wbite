@@ -1,0 +1,125 @@
+iBoot version: qemu-sptm
+Darwin Image4 Extension Version 7.0.0: Tue Aug 11 20:28:36 PDT 2026; root:AppleImage4-374~13958/AppleImage4/RELEASE_ARM64E
+AppleImage4: legacy nonce blob length insufficient: actual = 96, expected >= 368
+AppleImage4: magazine[pdmg]: failed to read nonce slot data: 2
+AppleImage4: magazine[cptx]: failed to read nonce slot data: 2
+AppleImage4: magazine[dvdi]: failed to read nonce slot data: 2
+AppleImage4: magazine[c1bt]: failed to read nonce slot data: 2
+AppleImage4: magazine[c1ab]: failed to read nonce slot data: 2
+AppleImage4: magazine[c1gn]: failed to read nonce slot data: 2
+AppleImage4: magazine[c1sm]: failed to read nonce slot data: 2
+AppleImage4: magazine[d1ma]: failed to read nonce slot data: 2
+AppleImage4: magazine[c1ge]: failed to read nonce slot data: 2
+AppleImage4: magazine[c1er]: failed to read nonce slot data: 2
+AppleImage4: magazine[c1ai]: failed to read nonce slot data: 2
+AppleImage4: magazine[c1al]: failed to read nonce slot data: 2
+AppleImage4: root power domain not yet available: 19
+Image4: unable to setup /chosen/asmb node
+AMFI: UDID support enabled: 2
+AMFI: Booted in a VM
+ACMTRM: initU32FromBootArg: acm_fastsim = 0xffffffff <--- not found.
+ACMTRM: initU32FromEDTProp: /defaults/insecure_hpr = 0x0 <--- not found.
+ACMTRM: isFastSimTarget: isFastSim = NO.
+AppleCredentialManager: init: inited KE[1] (ready=NO AVP=NO SIM=NO SIMT=NO USESEP=YES) -> true.
+AppleCredentialManager: probe: probed KE[1] (ready=NO) -> true (score=0).
+IOServicePH::kIOMessageSystemCapabilityChange: will 0xf->0xf
+IOServicePH::systemPowerChange to 0x30
+IOServicePH::kIOMessageSystemCapabilityChange: did 0xf->0xf
+AppleARMBacklight::start: Using new Backlight Architecture 1
+AppleARMBacklight::start: _lMaxProduct=131072000
+AppleARMBacklight::start: _lMidProduct=19345113
+AppleARMBacklight::start: _lMinProduct=131072
+AppleARMBacklight::exportCalibration: _lMaxProduct=131072000, _lMidProduct=19345113, _lMinProduct=131072, _lMaxPanel=131072000, _lMidPanel=19345113, _lMinPanel=131072, _milliAmps2NitsScaleFactor=0
+AppleARMBacklight::start: no backlight enable function
+AppleARMBacklight::start: no backlight update function
+AppleARMBacklight::start: _minDACLevel=67 _maxDACLevel=1023
+Warning: arc4random not implemented
+Warning: arc4random not implemented
+Warning: arc4random not implemented
+AKSAnalytics built Aug 11 2026 20:42:16
+selected analytics domain DeferredMediaCacheAKSAnalytics startedAppleARMBootPerf: Error: profile handoff region not found (2)
+AppleARMBootPerf: Error: failed to publish profile data (2)
+AppleARMSFRManifest: Starting
+AppleARMSFRManifest: Error: Failed to find property sfr-manifest-hash
+AppleARMSFRManifest: Found HASH property
+AppleARMSFRManifest: Found 0 matching hash entries
+AppleARMSFRManifest: Error: Invalid input
+AppleARMSFRManifest: Error: Failed to find manifest entry region
+AppleARMSFRManifest: Error: Failed to locate manifest information
+AppleARMSFRManifest: Successfully published sfr-manifest
+[AppleLockdownMode - start] started
+AppleCredentialManager: start: starting KE[1] (ready=NO) -> true.
+AppleCredentialManager: initImpl: called, KE[1].
+ACMFirstResponderKernelService: init: called, .
+[AppleLockdownMode - LDMShouldEnforceParity] restoreOS check passed
+ACM: init: called, .
+ACMKeybag: init: called, starting keybag service.
+ACMLockdownModeKernelService: init: called, .
+ACMLockdownModeKernelService: init: returning, result = true.
+AppleCredentialManager: initImpl: KE[1] INITED.
+AppleCredentialManager: initImpl: returning, KE[1] -> true.
+AppleCredentialManager: startImpl: called, KE[1].
+ACMLockdownModeKernelService: start: called, .
+ACMLockdownModeKernelService: start: returning, result = true.
+AppleCredentialManager: startImpl: initializing power management.
+AppleCredentialManager: startImpl: will join SEPManager's PM tree in getSEPEndpoint().
+AppleCredentialManager: startImpl: registering notifications.
+AppleCredentialManager: startImpl: KE[1] STARTED.
+AppleCredentialManager: startImpl: returning, KE[1] -> true.
+AppleCredentialManager: start: started KE[1] (ready=YES) -> true.
+"AppleSEPKeyStore":pid:0,:373: starting (BUILT: Aug 11 2026 20:41:54) ("normal" variant 🌽 , 2383.4.1)
+"AppleSEPKeyStore":pid:0,:492: _sep_enabled = 1
+"AppleSEPKeyStore":pid:0,:553: ioPerfControl is enabled: 1, 1
+virtual bool CoreAnalyticsHub::start(IOService *)::150:CoreAnalyticsHub start
+virtual bool CoreAnalyticsHub::start(IOService *)::229:CoreAnalyticsHub start completed
+virtual bool AppleARMLightEmUp::start(IOService *): starting...
+AppleInterruptControllerV2::start: Num Shared Timestamps == 16
+AMFI: skipping PMGRAON latch due to AVP
+AMFI: trying to get developer mode status from ACM
+AppleCredentialManager: waitForSEPEndpointOutsideACMCommandGate: waiting (cmd=25).
+[uart] Started AppleSerialShim.
+Identified Serial Port qemuport0 at 0x235204000(<ptr>)
+Identified Serial Port qemuport1 at 0x235208000(<ptr>)
+Identified Serial Port qemuport2 at 0x23520c000(<ptr>)
+Identified Serial Port qemuport3 at 0x235210000(<ptr>)
+apfs_module_start:3381: load: com.apple.filesystems.apfs, v3288.0.3, apfs-3288.0.3, 2026/08/11
+Setting up notifier for CoreAnalyticsHub
+apfs_sysctl_register:1328: done registering sysctls.
+com.apple.AppleFSCompressionTypeZlib kmod start
+Couldn't alloc class "AFKResource"
+com.apple.AppleFSCompressionTypeZlib load succeeded
+Couldn't alloc class "AFKResource"
+BSD root: md0, major 3, minor 0
+apfs_vfsop_mountroot:3156: apfs: mountroot called!
+container_rootmount:2638: boot from ramdisk /dev/md0
+dev_init:296: md0 device accelerated crypto: 0 (compiled @ Aug 11 2026 20:29:13)
+dev_init:299: md0 device_handle block size 512 block count 17518592 features 0 internal 
+nx_mount:1157: md0 initializing cache w/hash_size 8192 and cache size 22528
+nx_mount:1482: md0 checkpoint search: largest xid 595, best xid 595 @ 3
+nx_mount:1509: md0 stable checkpoint indices: desc 2 data 3
+fs_lookup_root_snapshot_name:375: md0s1 failed to get root-snapshot-name from DT
+apfs_find_named_root_snapshot_xid:2153: md0s1 failed to retrieve default root snapshot xid: No such file or directory (2)
+apfs_find_named_root_snapshot_xid:2191: md0s1 The global payload bytes pointer is NULL
+apfs_vfsop_mount:2914: md0s1 failed to find named root snapshot: Need authenticator (81)
+apfs_log_op_with_proc:3279: md0s1 mounting volume Orchid24R365.N218bOS, requested by: kernel_task (pid 0); parent: kernel_task (pid 0)
+apfs_vfsop_mount:3017: md0s1 fs iokit node was not found
+handle_mount:893: md0s1 vol-uuid: 204D04D5-ED03-4EA7-9576-132B49C01372 block size: 4096 block count: 2189824 (unencrypted; flags: 0x1; features: 8.0.12)
+handle_mount:906: md0s1 setting dev block size to 4096 from 512
+apfs_log_op_with_proc:3279: md0s1 mount-complete volume Orchid24R365.N218bOS, requested by: kernel_task (pid 0); parent: kernel_task (pid 0)
+ACMTRM: waitForSEPEndpoint: timed out waiting for AppleSEPManager (timeoutMs=5000).
+ACMTRM: waitForSEPEndpoint: timed out waiting for AppleSEPManager (timeoutMs=5000).
+ACMTRM: waitForSEPEndpoint: timed out waiting for AppleSEPManager (timeoutMs=5000).
+ACMTRM: waitForSEPEndpoint: timed out waiting for AppleSEPManager (timeoutMs=5000).
+ACMTRM: waitForSEPEndpoint: timed out waiting for AppleSEPManager (timeoutMs=5000).
+ACMTRM: waitForSEPEndpoint: timed out waiting for AppleSEPManager (timeoutMs=5000).
+ACMTRM: waitForSEPEndpoint: timed out waiting for AppleSEPManager (timeoutMs=5000).
+ACMTRM: waitForSEPEndpoint: timed out waiting for AppleSEPManager (timeoutMs=5000).
+ACMTRM: waitForSEPEndpoint: timed out waiting for AppleSEPManager (timeoutMs=5000).
+ACMTRM: waitForSEPEndpoint: timed out waiting for AppleSEPManager (timeoutMs=5000).
+ACMTRM: waitForSEPEndpoint: timed out waiting for AppleSEPManager (timeoutMs=5000).
+ACMTRM: waitForSEPEndpoint: timed out waiting for AppleSEPManager (timeoutMs=5000).
+ACMTRM: waitForSEPEndpoint: timed out waiting for AppleSEPManager (timeoutMs=5000).
+ACMTRM: waitForSEPEndpoint: timed out waiting for AppleSEPManager (timeoutMs=5000).
+ACMTRM: waitForSEPEndpoint: timed out waiting for AppleSEPManager (timeoutMs=5000).
+ACMTRM: waitForSEPEndpoint: timed out waiting for AppleSEPManager (timeoutMs=5000).
+ACMTRM: waitForSEPEndpoint: timed out waiting for AppleSEPManager (timeoutMs=5000).

@@ -79,7 +79,7 @@ records the exp15 result as a definitive data point that closes the
 
 ```
 patchkit.py apply <bootkc.before-exp10> \
-  -m tools/opwwe231/watchos/qemu-sptm/patchkit/manifest-exp15-entry-marker.yaml \
+  -m tools/watchos/qemu-sptm/patchkit/manifest-exp15-entry-marker.yaml \
   -o <bootkc.exp15-entry>
 # → sha256 c080df2f75e7b2573fe34ef1dfb97ba4a3b7b0b2b14f013807c0846850efe1a5
 # boot: expected 0 "EXP15" lines in serial log, confirming function unreached

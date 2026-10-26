@@ -7,7 +7,7 @@ device-tree fixup script.
 
 This is the second QEMU bring-up in this repo; the earlier Watch5,4 / S5 / T8006
 work on an old qemu-t8030 fork lives under
-[`tools/opwwe231/watchos/qemu/`](../qemu/).
+[`tools/watchos/qemu/`](../qemu/).
 
 ## Scope
 

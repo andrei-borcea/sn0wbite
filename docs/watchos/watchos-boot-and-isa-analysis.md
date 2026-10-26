@@ -158,7 +158,7 @@ All observed on the watch or in its stock backup.
   non-multislot device enters fastboot.
 - Creating real `boot_a`/`boot_b` partitions would put the loader into multi-slot mode but
   requires rewriting the live GPT, which the boot ROM reads; EDL is gated (see
-  [recovery research](../device/recovery.md)). We do not recommend it.
+  [recovery research](../opwwe231/recovery.md)). We do not recommend it.
 
 ## Not covered
 

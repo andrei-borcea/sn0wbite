@@ -129,7 +129,7 @@ the next REA target shifts there.
 ## Files
 
 ```
-tools/opwwe231/watchos/qemu-sptm/patchkit/
+tools/watchos/qemu-sptm/patchkit/
   manifest-exp10-amfi-stub.yaml
   manifest-exp11-amfi-ct-bypass.yaml
   manifest-exp12-bulk-einval.yaml

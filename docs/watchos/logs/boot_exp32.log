@@ -1,0 +1,257 @@
+iBoot version: qemu-sptm
+Darwin Image4 Extension Version 7.0.0: Tue Aug 11 20:28:36 PDT 2026; root:AppleImage4-374~13958/AppleImage4/RELEASE_ARM64E
+AppleImage4: legacy nonce blob length insufficient: actual = 96, expected >= 368
+AppleImage4: magazine[pdmg]: failed to read nonce slot data: 2
+AppleImage4: magazine[cptx]: failed to read nonce slot data: 2
+AppleImage4: magazine[dvdi]: failed to read nonce slot data: 2
+AppleImage4: magazine[c1bt]: failed to read nonce slot data: 2
+AppleImage4: magazine[c1ab]: failed to read nonce slot data: 2
+AppleImage4: magazine[c1gn]: failed to read nonce slot data: 2
+AppleImage4: magazine[c1sm]: failed to read nonce slot data: 2
+AppleImage4: magazine[d1ma]: failed to read nonce slot data: 2
+AppleImage4: magazine[c1ge]: failed to read nonce slot data: 2
+AppleImage4: magazine[c1er]: failed to read nonce slot data: 2
+AppleImage4: magazine[c1ai]: failed to read nonce slot data: 2
+AppleImage4: magazine[c1al]: failed to read nonce slot data: 2
+AppleImage4: root power domain not yet available: 19
+Image4: unable to setup /chosen/asmb node
+AMFI: UDID support enabled: 2
+AMFI: Booted in a VM
+IOServicePH::kIOMessageSystemCapabilityChange: will 0xf->0xf
+IOServicePH::systemPowerChange to 0x30
+IOServicePH::kIOMessageSystemCapabilityChange: did 0xf->0xf
+ACMTRM: initU32FromBootArg: acm_fastsim = 0xffffffff <--- not found.
+ACMTRM: initU32FromEDTProp: /defaults/insecure_hpr = 0x0 <--- not found.
+ACMTRM: isFastSimTarget: isFastSim = NO.
+AppleCredentialManager: init: inited KE[1] (ready=NO AVP=NO SIM=NO SIMT=NO USESEP=YES) -> true.
+AppleCredentialManager: probe: probed KE[1] (ready=NO) -> true (score=0).
+AppleARMBacklight::start: Using new Backlight Architecture 1
+AppleARMBacklight::start: _lMaxProduct=131072000
+AppleARMBacklight::start: _lMidProduct=19345113
+AppleARMBacklight::start: _lMinProduct=131072
+AppleARMBacklight::exportCalibration: _lMaxProduct=131072000, _lMidProduct=19345113, _lMinProduct=131072, _lMaxPanel=131072000, _lMidPanel=19345113, _lMinPanel=131072, _milliAmps2NitsScaleFactor=0
+AppleARMBacklight::start: no backlight enable function
+AppleARMBacklight::start: no backlight update function
+AppleARMBacklight::start: _minDACLevel=67 _maxDACLevel=1023
+AppleInterruptControllerV2::start: Num Shared Timestamps == 16
+AMFI: skipping PMGRAON latch due to AVP
+AMFI: trying to get developer mode status from ACM
+[uart] Started AppleSerialShim.
+virtual bool AppleARMLightEmUp::start(IOService *): starting...
+Warning: arc4random not implemented
+Warning: arc4random not implemented
+Warning: arc4random not implemented
+AKSAnalytics built Aug 11 2026 20:42:16
+selected analytics domain Intents LibraryAKSAnalytics startedAppleARMBootPerf: Error: profile handoff region not found (2)
+AppleARMBootPerf: Error: failed to publish profile data (2)
+AppleARMSFRManifest: Starting
+AppleARMSFRManifest: Error: Failed to find property sfr-manifest-hash
+AppleARMSFRManifest: Found HASH property
+AppleARMSFRManifest: Found 0 matching hash entries
+AppleARMSFRManifest: Error: Invalid input
+AppleARMSFRManifest: Error: Failed to find manifest entry region
+AppleARMSFRManifest: Error: Failed to locate manifest information
+AppleARMSFRManifest: Successfully published sfr-manifest
+[AppleLockdownMode - start] started
+AppleCredentialManager: start: starting KE[1] (ready=NO) -> true.
+AppleCredentialManager: initImpl: called, KE[1].
+[AppleLockdownMode - LDMShouldEnforceParity] restoreOS check passed
+ACMFirstResponderKernelService: init: called, .
+ACM: init: called, .
+ACMKeybag: init: called, starting keybag service.
+ACMLockdownModeKernelService: init: called, .
+ACMLockdownModeKernelService: init: returning, result = true.
+AppleCredentialManager: initImpl: KE[1] INITED.
+AppleCredentialManager: initImpl: returning, KE[1] -> true.
+AppleCredentialManager: startImpl: called, KE[1].
+ACMLockdownModeKernelService: start: called, .
+ACMLockdownModeKernelService: start: returning, result = true.
+AppleCredentialManager: startImpl: initializing power management.
+AppleCredentialManager: startImpl: will join SEPManager's PM tree in getSEPEndpoint().
+AppleCredentialManager: startImpl: registering notifications.
+AppleCredentialManager: startImpl: KE[1] STARTED.
+AppleCredentialManager: startImpl: returning, KE[1] -> true.
+AppleCredentialManager: start: started KE[1] (ready=YES) -> true.
+"AppleSEPKeyStore":pid:0,:373: starting (BUILT: Aug 11 2026 20:41:54) ("normal" variant 🌽 , 2383.4.1)
+AppleCredentialManager: waitForSEPEndpointOutsideACMCommandGate: waiting (cmd=25).
+"AppleSEPKeyStore":pid:0,:492: _sep_enabled = 1
+"AppleSEPKeyStore":pid:0,:553: ioPerfControl is enabled: 1, 1
+virtual bool CoreAnalyticsHub::start(IOService *)::150:CoreAnalyticsHub start
+virtual bool CoreAnalyticsHub::start(IOService *)::229:CoreAnalyticsHub start completed
+com.apple.AppleFSCompressionTypeZlib kmod start
+apfs_module_start:3381: load: com.apple.filesystems.apfs, v3288.0.3, apfs-3288.0.3, 2026/08/11
+Couldn't alloc class "AFKResource"
+com.apple.AppleFSCompressionTypeZlib load succeeded
+Setting up notifier for CoreAnalyticsHub
+apfs_sysctl_register:1328: done registering sysctls.
+Couldn't alloc class "AFKResource"
+BSD root: md0, major 3, minor 0
+apfs_vfsop_mountroot:3156: apfs: mountroot called!
+container_rootmount:2638: boot from ramdisk /dev/md0
+dev_init:296: md0 device accelerated crypto: 0 (compiled @ Aug 11 2026 20:29:13)
+dev_init:299: md0 device_handle block size 512 block count 17518592 features 0 internal 
+nx_mount:1157: md0 initializing cache w/hash_size 8192 and cache size 22528
+nx_mount:1482: md0 checkpoint search: largest xid 595, best xid 595 @ 3
+nx_mount:1509: md0 stable checkpoint indices: desc 2 data 3
+fs_lookup_root_snapshot_name:375: md0s1 failed to get root-snapshot-name from DT
+apfs_find_named_root_snapshot_xid:2153: md0s1 failed to retrieve default root snapshot xid: No such file or directory (2)
+apfs_find_named_root_snapshot_xid:2191: md0s1 The global payload bytes pointer is NULL
+apfs_vfsop_mount:2914: md0s1 failed to find named root snapshot: Need authenticator (81)
+apfs_log_op_with_proc:3279: md0s1 mounting volume Orchid24R365.N218bOS, requested by: kernel_task (pid 0); parent: kernel_task (pid 0)
+apfs_vfsop_mount:3017: md0s1 fs iokit node was not found
+handle_mount:893: md0s1 vol-uuid: 204D04D5-ED03-4EA7-9576-132B49C01372 block size: 4096 block count: 2189824 (unencrypted; flags: 0x1; features: 8.0.12)
+handle_mount:906: md0s1 setting dev block size to 4096 from 512
+apfs_log_op_with_proc:3279: md0s1 mount-complete volume Orchid24R365.N218bOS, requested by: kernel_task (pid 0); parent: kernel_task (pid 0)
+Identified Serial Port qemuport0 at 0x235204000(<ptr>)
+Identified Serial Port qemuport3 at 0x235210000(<ptr>)
+Identified Serial Port qemuport1 at 0x235208000(<ptr>)
+Identified Serial Port qemuport2 at 0x23520c000(<ptr>)
+panic(cpu 0 caller 0xfffffff029eb4fb0):  initproc failed to start -- exit reason namespace 3 subcode 0x2 description: none
+Nested panic detected - entry count: 2 panic_caller: 0xfffffff02a1ce390
+Kernel text exec slide: 0x0000000022978000
+Kernel text exec base: 0xfffffff02997c000
+Kernel UUID: 02B5F034-7ED5-3FC4-946B-7E1AE1561478
+Panicked thread: 0xffffffdedbf74800, backtrace: 0xffffffea470aea80, tid: 234
+		  lr: 0xfffffff0299c073c  fp: 0xffffffea470aeb00
+		  lr: 0xfffffff0299c0090  fp: 0xffffffea470aecc0
+		  lr: 0xfffffff02a1c04d4  fp: 0xffffffea470aece0
+		  lr: 0xfffffff02a1ce390  fp: 0xffffffea470aee60
+		  lr: 0xfffffff029b36ef0  fp: 0xffffffea470aef10
+		  lr: 0xfffffff029b35460  fp: 0xffffffea470aefe0
+		  lr: 0xfffffff02997f104  fp: 0xffffffea470aeff0
+		  lr: 0xfffffff029b3dc68  fp: 0xffffffea470af4a0
+		  lr: 0xfffffff0299c0ce4  fp: 0xffffffea470af520
+		  lr: 0xfffffff029b37038  fp: 0xffffffea470af590
+		  lr: 0xfffffff029b352e8  fp: 0xffffffea470af660
+		  lr: 0xfffffff02997f104  fp: 0xffffffea470af670
+		  lr: 0xfffffff0299c0df0  fp: 0xffffffea470afb80
+		  lr: 0xfffffff02a1c059c  fp: 0xffffffea470afba0
+		  lr: 0xfffffff029eb4fb0  fp: 0xffffffea470afce0
+		  lr: 0xfffffff029eb4374  fp: 0xffffffea470afd60
+		  lr: 0xfffffff029b361a8  fp: 0xffffffea470afe40
+		  lr: 0xfffffff029b353f8  fp: 0xffffffea470aff10
+		  lr: 0xfffffff02997f104  fp: 0xffffffea470aff20
+Nested panic string:
+Kernel data abort. at pc 0xfffffff029b3dc68, lr 0xfffffff0299c0ce4 (saved state: 0xffffffea470af000)
+	  x0:  0xfffffff027041584 x1:  0x0000000000000001  x2:  0x0000000000002020  x3:  0x0000000000000000
+	  x4:  0x0000000000000010 x5:  0x0000000000000001  x6:  0x0000000000000001  x7:  0xfffffff029eb4fb0
+	  x8:  0x0000000000000000 x9:  0x873e1440b56b002e  x10: 0xfffffff0270b6949  x11: 0x0000000000000000
+	  x12: 0x0000000000000073 x13: 0x0000000000000000  x14: 0x0000000000000320  x15: 0x0000000000000000
+	  x16: 0xfffffff02a18a0a8 x17: 0x0000000000000a98  x18: 0x0000000000000000  x19: 0x0000000000000000
+	  x20: 0x0000000000000000 x21: 0xfffffff02a3ab000  x22: 0x0000000000002020  x23: 0x0000000000000000
+	  x24: 0xfffffff027041584 x25: 0xfffffff02a388000  x26: 0xfffffff02a40b000  x27: 0xfffffff02a3a0140
+	  x28: 0xfffffff02a3ab000 fp:  0xffffffea470af4a0  lr:  0xfffffff0299c0ce4  sp:  0xffffffea470af350
+	  pc:  0xfffffff029b3dc68 cpsr: 0x604033c8         esr: 0x0000000096000007  far: 0x000000000000000c
+
+<end nested panic string>
+panic(cpu 0 caller 0xfffffff029eb4fb0):  initproc failed to start -- exit reason namespace 3 subcode 0x2 description: none
+Nested panic detected - entry count: 3 panic_caller: 0xfffffff02a1ce390
+Kernel text exec slide: 0x0000000022978000
+Kernel text exec base: 0xfffffff02997c000
+Kernel UUID: 02B5F034-7ED5-3FC4-946B-7E1AE1561478
+Panicked thread: 0xffffffdedbf74800, backtrace: 0xffffffea470adbc0, tid: 234
+		  lr: 0xfffffff0299c073c  fp: 0xffffffea470adc40
+		  lr: 0xfffffff0299c0090  fp: 0xffffffea470ade00
+		  lr: 0xfffffff02a1c04d4  fp: 0xffffffea470ade20
+		  lr: 0xfffffff02a1ce390  fp: 0xffffffea470adfa0
+		  lr: 0xfffffff029b36ef0  fp: 0xffffffea470ae050
+		  lr: 0xfffffff029b35588  fp: 0xffffffea470ae120
+		  lr: 0xfffffff02997f104  fp: 0xffffffea470ae130
+		  lr: 0xfffffff029b3dc80  fp: 0xffffffea470ae5e0
+		  lr: 0xfffffff0299c0ce4  fp: 0xffffffea470ae660
+		  lr: 0xfffffff029b37038  fp: 0xffffffea470ae6d0
+		  lr: 0xfffffff029b352e8  fp: 0xffffffea470ae7a0
+		  lr: 0xfffffff02997f104  fp: 0xffffffea470ae7b0
+		  lr: 0xfffffff0299c0df0  fp: 0xffffffea470aecc0
+		  lr: 0xfffffff02a1c04d4  fp: 0xffffffea470aece0
+		  lr: 0xfffffff02a1ce390  fp: 0xffffffea470aee60
+		  lr: 0xfffffff029b36ef0  fp: 0xffffffea470aef10
+		  lr: 0xfffffff029b35460  fp: 0xffffffea470aefe0
+		  lr: 0xfffffff02997f104  fp: 0xffffffea470aeff0
+		  lr: 0xfffffff029b3dc68  fp: 0xffffffea470af4a0
+		  lr: 0xfffffff0299c0ce4  fp: 0xffffffea470af520
+		  lr: 0xfffffff029b37038  fp: 0xffffffea470af590
+		  lr: 0xfffffff029b352e8  fp: 0xffffffea470af660
+		  lr: 0xfffffff02997f104  fp: 0xffffffea470af670
+		  lr: 0xfffffff0299c0df0  fp: 0xffffffea470afb80
+		  lr: 0xfffffff02a1c059c  fp: 0xffffffea470afba0
+		  lr: 0xfffffff029eb4fb0  fp: 0xffffffea470afce0
+		  lr: 0xfffffff029eb4374  fp: 0xffffffea470afd60
+		  lr: 0xfffffff029b361a8  fp: 0xffffffea470afe40
+		  lr: 0xfffffff029b353f8  fp: 0xffffffea470aff10
+		  lr: 0xfffffff02997f104  fp: 0xffffffea470aff20
+Nested panic string:
+Kernel data abort. at pc 0xfffffff029b3dc80, lr 0xfffffff0299c0ce4 (saved state: 0xffffffea470ae140)
+	  x0:  0xfffffff027041584 x1:  0x0000000000000001  x2:  0x0000000000000000  x3:  0x0000000000000000
+	  x4:  0x0000000000000010 x5:  0x0000000000000001  x6:  0x0000000000000001  x7:  0xfffffff02a1ce390
+	  x8:  0x0000000000000000 x9:  0x873e1440b56b002e  x10: 0xfffffff0270b6949  x11: 0x0000000000000000
+	  x12: 0x0000000000000073 x13: 0x0000000000000000  x14: 0x0000000000000320  x15: 0x0000000000000000
+	  x16: 0xfffffff02a18a0a8 x17: 0x0000000000000a98  x18: 0x0000000000000000  x19: 0xfffffff02a40b9d8
+	  x20: 0x0000000000000000 x21: 0xfffffff02a3ab000  x22: 0x0000000000000000  x23: 0x0000000000000000
+	  x24: 0xfffffff027041584 x25: 0xfffffff02a388000  x26: 0xfffffff02a40b000  x27: 0xfffffff02a3a0140
+	  x28: 0xfffffff02a3ab000 fp:  0xffffffea470ae5e0  lr:  0xfffffff0299c0ce4  sp:  0xffffffea470ae490
+	  pc:  0xfffffff029b3dc80 cpsr: 0x604033c8         esr: 0x0000000096000047  far: 0x00000000000000b1
+
+<end nested panic string>
+panic(cpu 0 caller 0xfffffff029eb4fb0):  initproc failed to start -- exit reason namespace 3 subcode 0x2 description: none
+Nested panic detected - entry count: 4 panic_caller: 0xfffffff02a1ce390
+Kernel text exec slide: 0x0000000022978000
+Kernel text exec base: 0xfffffff02997c000
+Kernel UUID: 02B5F034-7ED5-3FC4-946B-7E1AE1561478
+Panicked thread: 0xffffffdedbf74800, backtrace: 0xffffffea470acd00, tid: 234
+		  lr: 0xfffffff0299c073c  fp: 0xffffffea470acd80
+		  lr: 0xfffffff0299c0090  fp: 0xffffffea470acf40
+		  lr: 0xfffffff02a1c04d4  fp: 0xffffffea470acf60
+		  lr: 0xfffffff02a1ce390  fp: 0xffffffea470ad0e0
+		  lr: 0xfffffff029b36ef0  fp: 0xffffffea470ad190
+		  lr: 0xfffffff029b35588  fp: 0xffffffea470ad260
+		  lr: 0xfffffff02997f104  fp: 0xffffffea470ad270
+		  lr: 0xfffffff029b3dc80  fp: 0xffffffea470ad720
+		  lr: 0xfffffff0299c0ce4  fp: 0xffffffea470ad7a0
+		  lr: 0xfffffff029b37038  fp: 0xffffffea470ad810
+		  lr: 0xfffffff029b352e8  fp: 0xffffffea470ad8e0
+		  lr: 0xfffffff02997f104  fp: 0xffffffea470ad8f0
+		  lr: 0xfffffff0299c0df0  fp: 0xffffffea470ade00
+		  lr: 0xfffffff02a1c04d4  fp: 0xffffffea470ade20
+		  lr: 0xfffffff02a1ce390  fp: 0xffffffea470adfa0
+		  lr: 0xfffffff029b36ef0  fp: 0xffffffea470ae050
+		  lr: 0xfffffff029b35588  fp: 0xffffffea470ae120
+		  lr: 0xfffffff02997f104  fp: 0xffffffea470ae130
+		  lr: 0xfffffff029b3dc80  fp: 0xffffffea470ae5e0
+		  lr: 0xfffffff0299c0ce4  fp: 0xffffffea470ae660
+		  lr: 0xfffffff029b37038  fp: 0xffffffea470ae6d0
+		  lr: 0xfffffff029b352e8  fp: 0xffffffea470ae7a0
+		  lr: 0xfffffff02997f104  fp: 0xffffffea470ae7b0
+		  lr: 0xfffffff0299c0df0  fp: 0xffffffea470aecc0
+		  lr: 0xfffffff02a1c04d4  fp: 0xffffffea470aece0
+		  lr: 0xfffffff02a1ce390  fp: 0xffffffea470aee60
+		  lr: 0xfffffff029b36ef0  fp: 0xffffffea470aef10
+		  lr: 0xfffffff029b35460  fp: 0xffffffea470aefe0
+		  lr: 0xfffffff02997f104  fp: 0xffffffea470aeff0
+		  lr: 0xfffffff029b3dc68  fp: 0xffffffea470af4a0
+		  lr: 0xfffffff0299c0ce4  fp: 0xffffffea470af520
+		  lr: 0xfffffff029b37038  fp: 0xffffffea470af590
+		  lr: 0xfffffff029b352e8  fp: 0xffffffea470af660
+		  lr: 0xfffffff02997f104  fp: 0xffffffea470af670
+		  lr: 0xfffffff0299c0df0  fp: 0xffffffea470afb80
+		  lr: 0xfffffff02a1c059c  fp: 0xffffffea470afba0
+		  lr: 0xfffffff029eb4fb0  fp: 0xffffffea470afce0
+		  lr: 0xfffffff029eb4374  fp: 0xffffffea470afd60
+		  lr: 0xfffffff029b361a8  fp: 0xffffffea470afe40
+		  lr: 0xfffffff029b353f8  fp: 0xffffffea470aff10
+		  lr: 0xfffffff02997f104  fp: 0xffffffea470aff20
+Nested panic string:
+Kernel data abort. at pc 0xfffffff029b3dc80, lr 0xfffffff0299c0ce4 (saved state: 0xffffffea470ad280)
+	  x0:  0xfffffff027041584 x1:  0x0000000000000001  x2:  0x0000000000000000  x3:  0x0000000000000000
+	  x4:  0x0000000000000010 x5:  0x0000000000000001  x6:  0x0000000000000001  x7:  0xfffffff02a1ce390
+	  x8:  0x0000000000000000 x9:  0x873e1440b56b002e  x10: 0xfffffff0270b6949  x11: 0x0000000000000000
+	  x12: 0x0000000000000073 x13: 0x0000000000000000  x14: 0x0000000000000320  x15: 0x0000000000000000
+	  x16: 0xfffffff02a18a0a8 x17: 0x0000000000000a98  x18: 0x0000000000000000  x19: 0xfffffff02a40b9d8
+	  x20: 0x0000000000000000 x21: 0xfffffff02a3ab000  x22: 0x0000000000000000  x23: 0x0000000000000000
+	  x24: 0xfffffff027041584 x25: 0xfffffff02a388000  x26: 0xfffffff02a40b000  x27: 0xfffffff02a3a0140
+	  x28: 0xfffffff02a3ab000 fp:  0xffffffea470ad720  lr:  0xfffffff0299c0ce4  sp:  0xffffffea470ad5d0
+	  pc:  0xfffffff029b3dc80 cpsr: 0x604033c8         esr: 0x0000000096000047  far: 0x00000000000000b1
+
+<end nested panic string>
+panic(cpu 0 caller 0xfffffff029eb4fb0):  initproc failed to start -- exit reason namespace 3 subcode 0x2 description: none
+Nested panic count exceeds limit 5, machine will reset or spin

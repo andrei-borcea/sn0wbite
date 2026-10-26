@@ -89,7 +89,7 @@ sub-function (which isn't patched by exp26).
 
 ## Reproducibility artifacts
 
-Preserved under `tools/opwwe231/watchos/qemu-sptm/gdbstub/`:
+Preserved under `tools/watchos/qemu-sptm/gdbstub/`:
 - `lldb_bp_cb.py` — LLDB python callback for breakpoint handlers
 - `lldb_init_debug.py` — reference commentary with command sequences
 
