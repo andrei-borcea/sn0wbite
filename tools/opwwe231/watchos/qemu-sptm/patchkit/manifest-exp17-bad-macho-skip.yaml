@@ -1,0 +1,59 @@
+# EXPERIMENT #17: skip the exec BAD_MACHO rejection.
+#
+# After exp16 (AMFI vnode_check_signature → trust-cache) lets the
+# adhoc dyld_shared_cache_arm64e register, launchd/init runs further
+# and reaches an exec of some adhoc Mach-O binary. The kernel's
+# exec_mach_imgact-equivalent (sub_FFFFFFF009EA7D28) calls a
+# validator (sub_FFFFFFF009EA9298) whose non-zero return triggers:
+#
+#   BL   sub_FFFFFFF009EA9298              ; validator
+#   CBZ  W0,  loc_FFFFFFF009EA82D4         ; branch if OK; fall through = fail
+#   MOV  X20, X0
+#   MOV  X0,  X19
+#   MOV  X1,  X21
+#   BL   sub_FFFFFFF009EA9190              ; cleanup
+#   MOV  W0,  #9                           ; namespace = OS_REASON_EXEC
+#   MOV  W1,  #1                           ; code = EXEC_EXIT_REASON_BAD_MACHO
+#   BL   sub_FFFFFFF009F6DDF4              ; os_reason_create(9, 1)
+#   ... → kills init via posix_spawn-SETEXEC
+#
+# Flipping the CBZ at 0xFFFFFFF009EA8198 to an unconditional B to the
+# same target `loc_FFFFFFF009EA82D4` makes the fail path unreachable:
+# whatever the validator returned, exec proceeds. The validator does
+# more than just a signature check (it also sets `(a3+1686) = …`
+# and reads entitlements per the Hex-Rays preview at
+# com.apple.security.hardened-process.dyld-ro), so we rely on those
+# side-effects happening before the return; only the result decision
+# is bypassed.
+#
+# Target composition: apply ON TOP of exp16 (bootkc.exp16, sha256
+# 71af5c04…). The patched byte is stock in the baseline before exp10,
+# so the manifest also applies to a stock bootkc.
+#
+#   patchkit.py apply bootkc.exp16 \
+#     -m manifest-exp17-bad-macho-skip.yaml \
+#     -o bootkc.exp16-17
+#
+# Expected serial-log progression:
+#   - no "init[1] fatal signal 9 namespace 9 code 0x1" panic
+#   - launchd/init continues into further exec'd processes
+#   - possibly: new blocker further down (likely still signature-
+#     adjacent given AMFI is wide open), OR a bash-5.x prompt if
+#     exec was the last gate.
+
+va_base:       0xFFFFFFF007E2C000
+file_text_off: 0xE28000
+
+patches:
+  - name: exp17-bad-macho-cbz-force
+    effect: >
+      replace `CBZ W0, loc_FFFFFFF009EA82D4` at
+      0xFFFFFFF009EA8198 with `B loc_FFFFFFF009EA82D4`, routing every
+      exec_mach_imgact-equivalent validator return into the success
+      continuation and bypassing the OS_REASON_EXEC / BAD_MACHO
+      construction at the next three instructions.
+    va:    0xFFFFFFF009EA8198
+    orig:  "e0090034"
+    new:   "4f000014"
+
+scanners: []

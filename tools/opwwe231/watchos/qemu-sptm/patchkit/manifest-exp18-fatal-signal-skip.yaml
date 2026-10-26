@@ -1,0 +1,50 @@
+# EXPERIMENT #18: proc_is_fatal_signal_for_init → always false.
+#
+# After exp16 (AMFI trust-cache override) lets dyld shared cache
+# register, launchd/init exec's some adhoc binary that fails
+# BAD_MACHO (OS_REASON_EXEC code 1). Because init is in a
+# posix_spawn(POSIX_SPAWN_SETEXEC), the failed exec kills init,
+# which panics the kernel because init cannot be killed.
+#
+# exp17 (CBZ W0 → B at the first exec_mach_imgact BAD_MACHO site in
+# sub_FFFFFFF009EA7D28) made no observable difference, so the
+# BAD_MACHO is set at a different site (or via a different path).
+# Rather than hunt every path, this patch neutralises the final
+# gate: sub_FFFFFFF009EB5118, which proc_signal_internal
+# (sub_FFFFFFF009ED5494) calls to decide "is this signal fatal to
+# this proc (specifically init)?" — a true return triggers the
+# proc_exit_log_fatal panic chain.
+#
+# Pattern: preserve BTI c (first instruction, landing pad for the
+# BLRAA caller from proc_signal_internal) and replace the next three
+# instructions with `MOV X0,#0 ; RET ; NOP`, following the exp14
+# recipe that successfully bypassed the Launch Constraint hook. The
+# resulting function always returns 0 / false, so the kernel treats
+# every signal to init as non-fatal and proceeds through the normal
+# signal-processing path.
+#
+# Risk: SIGKILL to init normally cannot be ignored, so psignal may
+# subsequently take some other weird exit path. In the worst case we
+# see a new panic that reveals the next blocker; in the best case
+# init stays alive and more userspace comes up.
+#
+# Apply composed with exp16 (bootkc.exp16):
+#   patchkit.py apply bootkc.exp16 \
+#     -m manifest-exp18-fatal-signal-skip.yaml \
+#     -o bootkc.exp16-18
+
+va_base:       0xFFFFFFF007E2C000
+file_text_off: 0xE28000
+
+patches:
+  - name: exp18-proc-is-fatal-signal-return-false
+    effect: >
+      replace the first three instructions after BTI c in
+      sub_FFFFFFF009EB5118 (proc_is_fatal_signal gate) with
+      MOV X0,#0 ; RET ; NOP so the function unconditionally
+      reports "signal is not fatal to this process".
+    va:    0xFFFFFFF009EB5118
+    orig:  "5f2403d5200400b4882a00f0108543f9"
+    new:   "5f2403d5000080d2c0035fd61f2003d5"
+
+scanners: []
