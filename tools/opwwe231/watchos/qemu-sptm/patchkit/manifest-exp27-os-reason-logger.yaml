@@ -1,0 +1,77 @@
+# EXPERIMENT #27: log every os_reason_create call with its (ns, code, caller_LR).
+#
+# After exp26 showed that patching the Mach-O validator return
+# sites doesn't suppress the (ns=9, code=1) exit reason, we need
+# to find the ACTUAL construction site. The three raw patterns
+# found by searching for `MOVZ W0, #9 ; MOVZ W1, #1` were two
+# BAD_MACHO sites in exec_mach_imgact (0x9EA81AC, 0x9EA81E8) and
+# one false positive (0x9EAFCFC is ns=9, code=9). Both BAD_MACHO
+# sites are now unreachable thanks to exp17+exp26, yet the panic
+# persists — therefore the (9, 1) reason must come from a FOURTH
+# construction site that doesn't use literal immediate loads.
+#
+# This trampoline logs every call to `sub_FFFFFFF009F6DDF4`
+# (os_reason_create). The caller address comes from LR (X30);
+# combined with the (ns, code) args, the serial log pinpoints the
+# site that fires for init's exec.
+#
+# Trampoline (16 instructions = 64 bytes + 28-byte fmt string, at
+# pad+0x60 = 0xFFFFFFF00A1D47D8, chosen to avoid conflicts with
+# exp21 at pad+0 and exp24-slot at pad+0x30):
+#
+#   STP X29, X30, [SP, #-0x50]!
+#   STP X0, X1,  [SP, #0x10]
+#   STP X2, X3,  [SP, #0x20]
+#   STP X4, X5,  [SP, #0x30]
+#   STP X6, X7,  [SP, #0x40]
+#   MOV X3, X30                 ; arg4 = caller LR
+#   MOV X2, X1                  ; arg3 = code
+#   MOV X1, X0                  ; arg2 = ns
+#   ADRP X0, fmt_page           ; arg1 = fmt string
+#   ADD X0, X0, #fmt_offset
+#   BL  sub_FFFFFFF008958174    ; AMFI printf
+#   LDP X6, X7,  [SP, #0x40]
+#   LDP X4, X5,  [SP, #0x30]
+#   LDP X2, X3,  [SP, #0x20]
+#   LDP X0, X1,  [SP, #0x10]
+#   LDP X29, X30, [SP], #0x50
+#   PACIBSP                     ; re-execute replaced inst
+#   B 0xFFFFFFF009F6DDF8        ; resume at #2 of original function
+#
+# fmt: "RSNC ns=%u code=%llu lr=%p\n"
+#
+# Apply ON TOP of the 9-patch base (do NOT combine with other
+# experimental filters — this is pure instrumentation).
+#
+#   patchkit.py apply bootkc.before-exp10 \
+#     -m manifest-exp27-os-reason-logger.yaml \
+#     -o bootkc.exp27-logger
+#
+# Expected: a flood of "RSNC ns=%u code=%llu lr=%p" lines in the
+# serial log. The one with (ns=9, code=1) and an LR not in the
+# known exec_mach_imgact BAD_MACHO sites is our new target.
+
+va_base:       0xFFFFFFF007E2C000
+file_text_off: 0xE28000
+
+patches:
+  - name: exp27-logger-trampoline
+    effect: >
+      install logger trampoline at pad+0x60 (0xFFFFFFF00A1D47D8),
+      preserving all 8 int-arg registers and the frame link while
+      calling the AMFI printf wrapper with the (ns, code, caller_LR)
+      tuple, then re-executes the replaced PACIBSP and resumes.
+    va:    0xFFFFFFF00A1D47D8
+    orig:  "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+    new:   "fd7bb6a9e00701a9e20f02a9e41703a9e61f04a9e3031eaae20301aae10300aa00000090006020915d0e9e97e61f44a9e41743a9e20f42a9e00741a9fd7bc5a87f2303d57765f61752534e43206e733d257520636f64653d256c6c75206c723d25700a00"
+
+  - name: exp27-os-reason-hook
+    effect: >
+      replace PACIBSP at the entry of sub_FFFFFFF009F6DDF4 with
+      B 0xFFFFFFF00A1D47D8, routing every os_reason_create call
+      through the logger trampoline.
+    va:    0xFFFFFFF009F6DDF4
+    orig:  "7f2303d5"
+    new:   "799a0914"
+
+scanners: []
