@@ -1,0 +1,66 @@
+# EXPERIMENT #15 (minimum variant): entry marker for
+# sub_FFFFFFF009F79CA8 = shared_region_map_and_slide_setup.
+#
+# Minimum sufficient proof before scaling to all 29 EINVAL sites.
+# Installs a 10-instruction trampoline in a zero-filled pad region of
+# __TEXT_EXEC at VA 0xFFFFFFF00A1D4778 (14472 bytes of pad verified
+# empty at file offset 0x31D0778), then redirects the function's
+# first instruction (PACIBSP at 0xFFFFFFF009F79CA8) to the trampoline.
+#
+# The trampoline:
+#   1. Saves X29/X30 and X0/X1 on the stack (sub_FFFFFFF009F79CA8
+#      reserves #0x460 later, so there is ample headroom here before
+#      its own SUB SP).
+#   2. Loads &"EXP15 marker=%u\n" into X0 via ADRP+ADD.
+#   3. Loads 0xFE (the ENTRY marker ID) into W1.
+#   4. Calls sub_FFFFFFF008958174, the AMFI printf wrapper verified
+#      to emit "AMFI: ..." lines to the serial console throughout the
+#      current experiments.
+#   5. Restores X0/X1 and X29/X30.
+#   6. Re-executes PACIBSP (the instruction we replaced at the entry).
+#   7. Branches to 0xFFFFFFF009F79CAC (the instruction after PACIBSP)
+#      to resume the function's normal flow.
+#
+# Expected serial output on boot IF the function is reached:
+#   "EXP15 marker=254\n"   (254 = 0xFE)
+#
+# Decision rule for next step:
+#   - marker observed → function IS entered; scale to 29-site variant
+#     (exp15-full) to identify which EINVAL branch fires.
+#   - marker NOT observed → function is NOT reached; rejection is
+#     upstream in AMFI return propagation / cs_blob_create / MACF
+#     dispatcher. Pivot REA to that chain.
+#
+# Apply either on a stock bootkc or on top of the 9-patch base
+# (manifest-watch7_11-27.0.1.yaml) — the two patched sites here
+# (0xFFFFFFF009F79CA8 and the pad at 0xFFFFFFF00A1D4778) are
+# untouched by that base chain, so byte-level reproducibility holds
+# in both cases.
+#
+#   patchkit.py apply <bootkc.base9> \
+#     -m manifest-exp15-entry-marker.yaml \
+#     -o bootkc.exp15-entry
+
+va_base:       0xFFFFFFF007E2C000
+file_text_off: 0xE28000
+
+patches:
+  - name: exp15-entry-trampoline
+    effect: >
+      install the EXP15 entry-marker trampoline at pad VA
+      0xFFFFFFF00A1D4778: 10 instructions (STP save, ADRP+ADD &fmt,
+      MOVZ W1,#0xFE, BL print, LDP restore, PACIBSP, B resume) plus a
+      20-byte "EXP15 marker=%u\n\0" format string.
+    va:    0xFFFFFFF00A1D4778
+    orig:  "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+    new:   "fd7bbfa9e007bfa90000009000801e91c11f80527a0e9e97e007c1a8fd7bc1a87f2303d54495f6174558503135206d61726b65723d25750a00000000"
+
+  - name: exp15-entry-hook
+    effect: >
+      replace PACIBSP at the entry of sub_FFFFFFF009F79CA8 with
+      B 0xFFFFFFF00A1D4778, redirecting every call into the trampoline.
+    va:    0xFFFFFFF009F79CA8
+    orig:  "7f2303d5"
+    new:   "b46a0914"
+
+scanners: []
