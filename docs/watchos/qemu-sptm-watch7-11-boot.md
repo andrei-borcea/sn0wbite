@@ -103,13 +103,52 @@ Watch to land there).
 
 ## Next
 
-1. Open a PR to `jprx/darwin-vm` with the two-hunk patch
-   (`dt_fixup-watch7_11.patch`).
-2. Optional cleanup: patch kernelcache to force an early
+1. ✅ **DONE** — PR to `jprx/darwin-vm` with the two-hunk `dt_fixup` patch is
+   open.
+2. **Optional cleanup**: patch kernelcache to force an early
    `publishResource("IONVRAM")` so the IONVRAM wait loop stops polluting the
    log (cosmetic — the restore flow already treats it as a tolerated
-   failure).
-3. Larger: swap the restore ramdisk for the full decrypted rootfs
-   (`043-04970-555.dmg.aea`) to let launchd come up in a normal user-space
-   context rather than restore mode. Requires the watchOS 27.0.1 24R365
-   fcs-key for AEA decryption.
+   failure). `IODTNVRAM::init` localized at `0xfffffff00a0ff700`,
+   `publishResource` internal wrapper at `0xfffffff00a0a52dc`. The IONVRAM
+   pub itself is routed through virtual (`blraa`) calls, so a surgical patch
+   needs Ghidra + vtable analysis.
+3. **Rootfs boot (attempted 2026-10-26, blocked by XNU md driver)**: the
+   full AEA-encrypted rootfs `043-04970-555.dmg.aea` (5.0 GB on disk,
+   decrypts to 8.4 GB) now extracts automatically with
+   ```
+   ipsw fw aea -o rootfs-out/ 043-04970-555.dmg.aea
+   ```
+   (no fcs-key database needed — `ipsw` fetches it via Apple's WKMS
+   endpoint). The decrypted DMG mounts as an Apple APFS container with
+   `/Volumes/Orchid24R365.N218bOS` (7.7 GB used, 7.1 GB in `/System`).
+   Passing it as `-ramdisk` to qemu-sptm (with `dram-size` bumped to
+   `0x400000000` = 16 GB in `dt_fixup`) **does not boot**: the XNU `md`
+   driver (`dev_init:299`) prints `block count 741376` for an 8.4 GB
+   ramdisk, which is exactly `(0x216A00000 & 0xFFFFFFFF) / 512`, so the
+   driver truncates the memory-descriptor length to 32 bits somewhere in
+   the chain `md_setup → IOMemoryDescriptor::withPhysicalAddress → …`. The
+   APFS `nx_dev_init` then detects the mismatch
+   (`container size 8969519104 greater than device size 379584512`) and
+   `apfs_vfsop_mountroot` fails with error 92 in a retry loop.
+
+   Candidate patch site:
+   `0xfffffff0097b5af4  str w9, [x19, #0x4f0]` writes `block_count` as a
+   32-bit value from the W-register populated by `ldur w9, [fp, -0x54]`
+   right after a `blraa` through `IOMemoryDescriptor`'s vtable+0x10
+   (`md.cpp:299` print format at VA `0xfffffff0078fbfd8`,
+   `str w0, [x19, #0x4ec]` at `0x97b5a98` sets `block_size`). The vtable
+   method returns `block_count` as a 32-bit out-arg, so the fix needs to
+   be upstream of this store; full Ghidra chain analysis is deferred.
+
+   Minimal rootfs variant: the dyld shared cache alone is 3.6 GB and
+   indivisible, so trimming the rootfs to under 4 GB (the 32-bit cap)
+   requires aggressive `PrivateFrameworks` pruning that would cascade
+   dependency failures. Not pursued in this session.
+
+## Status summary (2026-10-26)
+
+- ✅ Boot the watchOS 27 restore ramdisk on T8310 up to
+  `enable_usb (standardRestore)` host-wait — upstream PR open.
+- ✅ Decrypt the IPSW rootfs AEA via WKMS lookup.
+- ⚠️ Boot the decrypted rootfs: blocked on an XNU `md` 32-bit length
+  truncation; follow-up ticket to find and patch the upstream cast.
