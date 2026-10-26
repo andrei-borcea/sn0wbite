@@ -1,0 +1,69 @@
+# EXPERIMENT #19: narrow the trust-cache override to AMFI's own
+# predicate instead of writing to *a4 unconditionally.
+#
+# Replaces exp16's wholesale `*a4 = {"trust-cache", 1}` override
+# with a single-site patch on `sub_FFFFFFF00893BEF0`
+# (`is_cdhash_in_trust_cache`), the one-caller predicate that
+# `_vnode_check_signature` consults at VA 0xFFFFFFF00893DDD4 to
+# decide whether to take the trust-cache path (line 753 of the
+# Hex-Rays decompile) or fall through to the generic "dynamic"
+# path (line 961).
+#
+# The predicate iterates `sub_FFFFFFF008934734` (trust_cache_lookup)
+# across indices 1, 2, 3 (static / dynamic / personalized trust
+# caches) and returns true if any of them contain the cdhash. For
+# an adhoc dyld_shared_cache_arm64e the cdhash is **not** in any
+# trust cache, so the predicate returns false and AMFI routes to
+# the "dynamic" fallback — which `cs_shared_region_create` then
+# refuses.
+#
+# Patching the predicate to unconditionally return 1 (true) makes
+# AMFI treat every signature as a trust-cache hit, but — crucially,
+# unlike exp16 — this only changes WHICH BRANCH `_vnode_check_signature`
+# takes internally. Downstream consumers (Sandbox, exec validators,
+# amfid, every other MACF hook) read their own cs_blob flags or
+# their own MACF-hook outputs and never see AMFI's `*a4`
+# "trust-cache" written for every file. Sandbox's `"shenanigans!"
+# @evaluate.c:5234` panic from exp16+exp18 was a direct consequence
+# of that wholesale override; this narrower patch should not
+# trigger it.
+#
+# Preservation detail: the function starts with `BTI c` (0x5F2403D5)
+# followed by `PACIBSP` and a stack frame. We preserve `BTI c` and
+# replace the three following instructions
+# (`PACIBSP ; SUB SP,SP,#0x30 ; STP X20,X19,[SP,…]`) with
+# `MOVZ X0,#1 ; RET ; NOP`. The function has a single xref (direct
+# `BL` from 0xFFFFFFF00893DDD4) and no fallthrough internal entry
+# points, so overwriting the prolog is safe.
+#
+# Apply ON TOP of the 9-patch base alone (NOT on top of exp16):
+#   patchkit.py apply bootkc.before-exp10 \
+#     -m manifest-exp19-trust-cache-predicate.yaml \
+#     -o bootkc.exp19
+#
+# Expected serial progression (goals):
+#   - AMFI "unsuitable CT policy" / "code signature validation
+#     failed" lines gone for the shared cache (as in exp16).
+#   - dyld shared cache registers successfully.
+#   - Sandbox evaluator does **not** panic (unlike exp16+exp18)
+#     because AMFI only touches its own output for its own flow.
+#   - If a new blocker appears, it is a NEW signal (not Sandbox's
+#     "shenanigans"), telling us where to patch next.
+
+va_base:       0xFFFFFFF007E2C000
+file_text_off: 0xE28000
+
+patches:
+  - name: exp19-trust-cache-predicate-return-true
+    effect: >
+      replace the three instructions after BTI c in
+      sub_FFFFFFF00893BEF0 (is_cdhash_in_trust_cache) with
+      MOVZ X0,#1 ; RET ; NOP so the predicate unconditionally
+      reports "cdhash is in trust cache", routing AMFI's
+      vnode_check_signature into the trust-cache branch that
+      calls sub_FFFFFFF00893BFD0(a4, 1, "trust-cache") naturally.
+    va:    0xFFFFFFF00893BEF0
+    orig:  "5f2403d57f2303d5ffc300d1f44f01a9"
+    new:   "5f2403d5200080d2c0035fd61f2003d5"
+
+scanners: []

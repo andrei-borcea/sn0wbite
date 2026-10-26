@@ -1,0 +1,42 @@
+# EXPERIMENT #20: NOP the TBZ gate before the trust-cache predicate.
+#
+# At 0xFFFFFFF00893DDC4 AMFI's _vnode_check_signature has:
+#   TBZ W19, #0, loc_FFFFFFF00893DEF0
+# If W19 bit 0 is 0, the function skips the entire trust-cache
+# evaluation block and falls into an "internal error / dynamic"
+# path. For an adhoc dyld_shared_cache_arm64e, W19 bit 0 is 0
+# (likely "has valid CMS blob" or similar), so AMFI never calls
+# the trust-cache predicate at 0xFFFFFFF00893BEF0.
+#
+# Replace the TBZ with a NOP so execution falls through to the
+# subsequent `CBZ X24, …` (which keeps a valid null-pointer guard)
+# and then into the predicate call. Compose with exp19 (predicate
+# → return 1) so the predicate reports hit, which routes AMFI into
+# the trust-cache output path for every call that passes the
+# earlier upstream validation.
+#
+# Composition order (recommended):
+#   patchkit.py apply bootkc.before-exp10 \
+#     -m manifest-exp19-trust-cache-predicate.yaml -o bootkc.exp19
+#   patchkit.py apply bootkc.exp19 \
+#     -m manifest-exp11-amfi-ct-bypass.yaml -o bootkc.exp19-11
+#   patchkit.py apply bootkc.exp19-11 \
+#     -m manifest-exp20-tbz-nop.yaml -o bootkc.exp19-11-20
+
+va_base:       0xFFFFFFF007E2C000
+file_text_off: 0xE28000
+
+patches:
+  - name: exp20-tbz-nop
+    effect: >
+      replace TBZ W19,#0,loc_FFFFFFF00893DEF0 at
+      0xFFFFFFF00893DDC4 with NOP so AMFI's _vnode_check_signature
+      always falls through to the trust-cache predicate call,
+      instead of jumping away to the "internal error / dynamic"
+      path when W19 bit 0 is clear (which is the case for every
+      adhoc signature including the dyld shared cache).
+    va:    0xFFFFFFF00893DDC4
+    orig:  "73090036"
+    new:   "1f2003d5"
+
+scanners: []
