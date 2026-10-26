@@ -140,40 +140,89 @@ Watch to land there).
    method returns `block_count` as a 32-bit out-arg, so the fix needs to
    be upstream of this store; full Ghidra chain analysis is deferred.
 
-### 2026-10-26 later: bypass of the APFS size-mismatch check
+### 2026-10-26 later: full APFS mount of the rootfs
 
-The APFS sanity check in `nx_dev_init` that trips the kernel into the
-retry loop is at:
+Multiple surgical kernel patches get the watchOS 27 APFS rootfs
+(8.4 GB) past the XNU `/dev/md` driver's 32-bit length truncation and
+all the way to `apfs_log_op_with_proc: md0s1 mount-complete volume
+Orchid24R365.N218bOS`, with `launchd` exec'ing on top. The chain:
+
+| # | VA (patch) | Original | New | Effect |
+|---|---|---|---|---|
+| 1 | `0x98a46c0` | `880d0054` (`b.hi`) | `1f2003d5` (`nop`) | bypass APFS "container > device" sanity |
+| 2 | `0x97b5ab4` | `608602f9` (`str x0, [x19,#0x508]`) | `7733b317` (`b 0x8482890`) | redirect block_count store to trampoline |
+| 3 | `0x8482890` (16 B pad) | 16× `nop` | `movz w0,#0x5000; movk w0,#0x010B,lsl#16; str x0,[x19,#0x508]; b 0x97b5ab8` | hard-code block_count = `0x010B5000` (8.4 GB / 512) |
+| 4 | `0x9b6058c` | `82020054` (`b.hi`) | `1f2003d5` (`nop`) | bypass `mdevstrategy` 32-bit `cmp x19,x9` where `w9 = *(u32*)(dev_handle+8) << 12` |
+| 5 | `0x9b60598` | `69000054` (`b.ls`) | `03000014` (`b`) | force success-path on the next 32-bit remaining-length check (no truncation of IO count) |
+| 6 | `0x981fc74` | `69020054` (`b.ls`) | `1f2003d5` (`nop`) | bypass md "start outside device" check |
+| 7 | `0x981fc88` | `e9050054` (`b.ls`) | `2f000014` (`b`) | force md "range outside device" always-success |
+| 8 | `0x9b60634` | `200c0054` (`b.eq`) | `1f2003d5` (`nop`) | mdevstrategy "sink not mapped" bypass |
+| 9 | `0x9b606ec` | `77070034` (`cbz`) | `1f2003d5` (`nop`) | mdevstrategy "source not mapped" bypass |
+
+(All file offsets are `0xE28000 + (VA - 0xFFFFFFF007E2C000)`; the
+kernel's `__TEXT_EXEC` segment.)
+
+With this chain:
 
 ```
-0xfffffff0098a46b4  ldr x25, [x9, #0x28]     ; APFS container block_count
-0xfffffff0098a46b8  mul x8, x25, x20          ; × block_size
-0xfffffff0098a46bc  cmp x8, x28                ; vs device_size (u32 truncated)
-0xfffffff0098a46c0  b.hi 0xfffffff0098a4870   ; container > device → "corruption"
+dev_init:299: md0 device_handle block size 512 block count 17518592
+nx_mount:1157/1482/1509 (checkpoint xid 595, descs/data OK)
+handle_mount:893: md0s1 vol-uuid: 204D04D5-ED03-4EA7-9576-132B49C01372 block size: 4096 block count: 2189824 (features 8.0.12)
+handle_mount:906: md0s1 setting dev block size to 4096 from 512
+apfs_log_op_with_proc:3279: md0s1 mount-complete volume Orchid24R365.N218bOS
+dyld[1]: ignite() returned 8; ignition disabled
+...
 ```
 
-Flipping that one `b.hi` to a `nop` (file offset `0x28a06c0`,
-`880d0054` → `1f2003d5`) bypasses the "container size > device size"
-sanity gate. With the patch the boot gets four more APFS phases
-further:
+### Next blocker: AMFI rejects the dyld shared cache
+
+Beyond the APFS mount, `/sbin/launchd` execs, `dyld` runs, mmaps the
+stock watchOS `/System/Library/Caches/com.apple.dyld/dyld_shared_cache_arm64e`,
+and tries to register its signature with the kernel. AMFI rejects:
 
 ```
-dev_init:299: md0 block count 741376    ← still truncated, cosmetic
-nx_mount:1157: md0 initializing cache w/hash_size 8192 and cache size 22528
-nx_mount:1482: md0 checkpoint search: largest xid 595, best xid 595 @ 3
-nx_mount:1509: md0 stable checkpoint indices: desc 2 data 3
-apfs_mount_livefs:29660: md0s1 failed to fetch the extentref tree (error 6)
+AMFI: '/System/Library/Caches/com.apple.dyld/dyld_shared_cache_arm64e' is adhoc signed.
+AMFI: '/System/Library/Caches/com.apple.dyld/dyld_shared_cache_arm64e': unsuitable CT policy 0 for this platform/device, rejecting signature.
+AMFI: code signature validation failed.
+dyld[1]: result from check_np(): -1, errno 12  (ENOMEM)
+dyld[1]: Library not loaded: /usr/lib/libSystem.B.dylib  (no such file, no dyld cache)
+panic: launchd[1] fatal signal 6
 ```
 
-The `ENXIO` on the extent reference tree is the symptom of the same
-32-bit truncation deeper in the stack: the extent fetch issues an I/O
-beyond `device_size` (the 362 MB cap) and the md driver rejects it. A
-real fix needs to patch the block_count population itself, which does
-not fit inline in the two existing instruction slots
-(`ldur w9, [fp,-0x54] ; str w9, [x19,#0x4f0]`) and requires either a
-trampoline into kernel padding or a surgical rewrite of the virtual
-method behind `[x19, #0x4e0]+0x10`. Deferred to a future session with
-Ghidra available.
+The AMFI validation function lives at `0xfffffff00893da34` (pacibsp
+entry) with a main return at `0xfffffff00893f1d0` (retab); it is a
+large function with many branches to error-print blocks for both the
+"CT policy" and "adhoc signed" cases. Experiments:
+- Flipping the inner `b.ne 0x893e5ec` (CT policy error gate) to an
+  unconditional `b` suppresses the "unsuitable CT policy" log but
+  leaves the "adhoc signed" branch intact (the function returns a
+  failure code anyway and `check_np` still errors ENOMEM).
+- Rewriting the function entry to `mov x0, #0 ; ret` breaks earlier
+  AMFI consumers (APFS trustcache validation during mount), so the
+  function cannot be nulled wholesale.
+- Rewriting only the final `mov x0, x19` at `0x893f1b4` to
+  `mov x0, #0` is not enough — the shared-region syscall path reads
+  an AMFI-populated cache-descriptor struct and still errors out.
+
+The real fix needs full Ghidra-level analysis of the AMFI code-signing
+validator plus the shared-region registration path (`vm/shared_region.c`
+→ `cs_blob_create` → AMFI `csm_` monitor hooks) to find and patch the
+exact decision point for the "shared cache acceptable" verdict.
+Deferred to a future session with full Ghidra available.
+
+### Progress table
+
+| Phase | Status |
+|---|---|
+| iBoot → XNU handoff | ✅ |
+| SPTM/TXM init | ✅ |
+| XNU + IOKit kexts | ✅ |
+| **APFS rootfs mount** (8.4 GB, with the 9-patch chain above) | ✅ **NEW** |
+| `/sbin/launchd` exec | ✅ |
+| dyld load | partial — reaches shared cache registration |
+| AMFI accept dyld cache | ❌ blocker — needs deeper REA |
+| `launchd` complete bootstrap | ❌ gated on dyld cache |
+| SpringBoard | far future |
 
    Minimal rootfs variant: the dyld shared cache alone is 3.6 GB and
    indivisible, so trimming the rootfs to under 4 GB (the 32-bit cap)
