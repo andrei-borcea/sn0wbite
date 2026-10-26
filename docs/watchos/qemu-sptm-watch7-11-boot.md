@@ -259,6 +259,58 @@ validator plus the shared-region registration path (`vm/shared_region.c`
 exact decision point for the "shared cache acceptable" verdict.
 Deferred to a future session with full Ghidra available.
 
+### 2026-10-27: deep REA with r2 + r2ghidra
+
+With `r2ghidra`'s `pdg` decompiler the AMFI entry is confirmed as
+`_vnode_check_signature` (logs `AMFI: vnode_check_signature called
+with platform %d`). Its return value `uVar21` propagates up as the
+hook errno. The CT-policy and adhoc print blocks both set an
+intermediate `bVar4 = false` which, at the function's do-while, causes
+`break` → error exit. In assembly `bVar4 == w22`, reset via
+`mov w22, #0` at `0xfffffff00893e5e0` (CT) and `0xfffffff00893e618`
+(adhoc).
+
+Patching both to `mov w22, #1` **does** remove the
+`"AMFI: code signature validation failed."` log, but the function
+still returns a failure value to the shared-region path — `uVar21`
+derives from more than `bVar4` (likely `piVar16` state /
+`csm_evaluate_image4` result accumulated earlier).
+
+Separately, `shared_region_check_np` was located at
+`0xfffffff009f77788` and `vm_shared_region_auth_remap` at
+`0xfffffff009adda20` via r2ghidra. Both experiments proved dead ends:
+- `nop` the top-level `b.ne` in `shared_region_check_np` at
+  `0xfffffff009f77950` so the fast-path always triggers → `check_np`
+  returns 0 to dyld, but `/sbin/launchd` crashes with
+  `exit reason namespace 2 subcode 0xb` (SIGSEGV) because the kernel
+  never set up the task's shared region, so dyld dereferences
+  unmapped cache pages.
+- Replacing `vm_shared_region_auth_remap` entry with
+  `mov x0, #0 ; ret` → no effect: `vm_shared_region_setup` fails
+  earlier (in the AMFI `cs_blob_create` chain) so `auth_remap` is
+  never reached.
+
+What's needed next is a Ghidra-level trace of where
+`cs_blob_create` / `cs_shared_region_create` calls the AMFI validator
+for the dyld cache specifically and either patch that single caller
+to skip the AMFI call, or patch `/usr/lib/dyld` on the rootfs to not
+issue `__shared_region_check_np` at all (and lazy-load dylibs from
+the cache file by direct symbol resolution). Both are longer passes.
+
+### 2026-10-27: cs_enforcement_disable + bootarg attempts
+
+The `cs_enforcement_disable=1` kernel bootarg is recognised (`AMFI
+init: cs_enforcement disabled by boot-arg`) but AMFI then
+counter-panics with `"can't has cs_enforcement_disable" @
+AppleMobileFileIntegrity.cpp:5710`. Patching that panic (`bl panic
+-> nop` and the terminal `brk -> ret`) lets the bootarg take effect,
+after which the kernel enters an infinite loop of
+`loadTrustCacheWithExternalManifest: -536870206` **before** the APFS
+mount — full-disable is also a dead end.
+
+The `amfi_get_out_of_my_way=1` bootarg used by community iOS VM
+projects (vphone-cli, etc.) is silently ignored on watchOS 27.
+
 ### Progress table
 
 | Phase | Status |
