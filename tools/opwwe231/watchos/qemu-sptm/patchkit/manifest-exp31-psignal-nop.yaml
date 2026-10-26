@@ -1,0 +1,49 @@
+# EXPERIMENT #31: NOP the psignal_with_reason call in exec_mach_imgact
+#
+# exp29/30 proved the firing BAD_MACHO reason struct is created by
+# os_reason_create at `BL sub_FFFFFFF009F6DDF4` near 0xFFFFFFF009EA81B4,
+# then passed into psignal_with_reason to SIGKILL init.
+# exp30 changed the recorded namespace (9→0) but init still dies,
+# because start_init panics for ANY init death regardless of reason
+# (verified by reading start_init asm: `CBNZ X8, …` branches to a
+# "specific" panic emitter for non-NULL reason, else to a "no exit
+# reason" panic emitter — both call `panic()` unconditionally).
+#
+# The ONLY path forward: prevent init from dying at this exec attempt.
+# The actual kill site is the BL at 0xFFFFFFF009EA8270:
+#
+#   0x9EA826C  MOV X5, X22              ; reason struct ptr (arg 5)
+#   0x9EA8270  BL sub_FFFFFFF009ED5494  ; psignal_with_reason
+#
+# NOP'ing this BL stops init from receiving SIGKILL at this site.
+# The function then continues naturally past this block (TBZ W27,#8
+# and subsequent cleanup at 0x9EA8274+).
+#
+# Risk: the Mach-O load actually failed (hence we got here), and
+# the ex-successful exec results in init running with incomplete
+# state. The newly-"exec'd" process may crash later via a different
+# signal, OR exec_mach_imgact's caller (posix_spawn) may detect the
+# failure through a different return channel and still kill init.
+#
+# Apply ON TOP of exp21-18-23-26 (full chain to initproc-failed-to-
+# start panic point).
+#
+#   patchkit.py apply bootkc.exp21-18-23-26 \
+#     -m manifest-exp31-psignal-nop.yaml \
+#     -o bootkc.exp31
+
+va_base:       0xFFFFFFF007E2C000
+file_text_off: 0xE28000
+
+patches:
+  - name: exp31-psignal-with-reason-nop
+    effect: >
+      replace `BL sub_FFFFFFF009ED5494` at 0xFFFFFFF009EA8270
+      (psignal_with_reason call in exec_mach_imgact's error-exit
+      block) with NOP so init doesn't receive the SIGKILL that was
+      queued up with the BAD_MACHO reason.
+    va:    0xFFFFFFF009EA8270
+    orig:  "89b40094"
+    new:   "1f2003d5"
+
+scanners: []

@@ -1,0 +1,37 @@
+# EXPERIMENT #33: make sub_FFFFFFF009EB86E0 a no-op.
+#
+# This function (kern_exit.c:4058 wrapper) delivers signal 9 to the
+# target process regardless of the (a3 & 2) branch; both arms call
+# functions that end up SIGKILL'ing. exp32's TBNZ redirect did not
+# help because the "non-fatal" branch also uses sig=9.
+#
+# Replace the first 12 bytes of the function entry with
+# `MOV X0, #0 ; RET ; NOP`, making every call to this function
+# return 0 immediately without delivering any signal. The function
+# has no BTI c prolog (verified: starts with PACIBSP = 7f2303d5),
+# so this is safe to overwrite without preserving a landing pad.
+#
+# Risk: any caller expecting the process to be killed (via this
+# wrapper) will see "success" instead and continue, which may lead
+# to downstream crashes if callers rely on process death as part
+# of their state transition.
+#
+# Apply ON TOP of exp31 (bootkc.exp31 = exp21+18+23+26+31).
+#   patchkit.py apply bootkc.exp31 \
+#     -m manifest-exp33-exit-with-reason-noop.yaml \
+#     -o bootkc.exp33
+
+va_base:       0xFFFFFFF007E2C000
+file_text_off: 0xE28000
+
+patches:
+  - name: exp33-exit-with-reason-return-zero
+    effect: >
+      overwrite the first three instructions of sub_FFFFFFF009EB86E0
+      (PACIBSP, SUB SP, STP X22,X21) with MOV X0,#0 ; RET ; NOP.
+      Any call to this exit-wrapper becomes a no-op returning 0.
+    va:    0xFFFFFFF009EB86E0
+    orig:  "7f2303d5ff4301d1f65702a9"
+    new:   "000080d2c0035fd61f2003d5"
+
+scanners: []

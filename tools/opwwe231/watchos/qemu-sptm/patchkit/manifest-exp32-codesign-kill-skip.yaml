@@ -1,0 +1,35 @@
+# EXPERIMENT #32: redirect kernel's exit-with-reason wrapper away from the
+# psignal_with_reason kill path by NOP'ing its selector branch.
+#
+# After exp31 (NOP psignal in exec_mach_imgact at 0xFFFFFFF009EA8270),
+# init no longer dies from exec BAD_MACHO. The next death comes from
+# `sub_FFFFFFF009EB86E0` (kern_exit.c:4058 "exit_with_reason_mach_async
+# _internal" equivalent), called with ns=3 (OS_REASON_CODESIGNING)
+# code=2.
+#
+# The function has two branches selected by `TBNZ W22, #1, loc_82A0`:
+#   - (a3 & 2) == 0: do bookkeeping, `B sub_FFFFFFF009EB4040(a1, 9)` —
+#     a non-fatal signal delivery that lets the process continue.
+#   - (a3 & 2) != 0: call `BL sub_FFFFFFF009ED5494` (psignal_with_reason)
+#     with sig=9 — SIGKILL with the reason, which panics start_init.
+#
+# NOP the TBNZ at 0xFFFFFFF009EB8744 to force the non-fatal branch for
+# every caller. The reason struct is still created (so caller state is
+# consistent), but init isn't killed.
+#
+# Apply ON TOP of exp31 (bootkc.exp31 = exp21+18+23+26+31).
+
+va_base:       0xFFFFFFF007E2C000
+file_text_off: 0xE28000
+
+patches:
+  - name: exp32-codesign-kill-tbnz-nop
+    effect: >
+      replace `TBNZ W22, #1, loc_FFFFFFF009EB87A0` at
+      0xFFFFFFF009EB8744 with NOP so the exit-with-reason wrapper
+      always takes the non-fatal B-branch instead of the kill BL.
+    va:    0xFFFFFFF009EB8744
+    orig:  "f6020837"
+    new:   "1f2003d5"
+
+scanners: []
