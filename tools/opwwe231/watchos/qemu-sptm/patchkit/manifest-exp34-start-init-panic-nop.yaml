@@ -1,0 +1,40 @@
+# EXPERIMENT #34: NOP the start_init panic emission.
+#
+# After exp33, init dies in USERSPACE with SIGSEGV (OS_REASON_SIGNAL,
+# subcode 0xb). start_init at sub_FFFFFFF009EB441C sees the dead
+# init proc and calls panic() at 0xFFFFFFF009EB4FAC:
+#
+#   0x9EB4F98  ADRL X3, aSSExitReasonNa  ; "%s -- exit reason namespace..."
+#   0x9EB4FA0  MOV W0, #0
+#   0x9EB4FA4  MOV X1, #0
+#   0x9EB4FA8  MOV W2, #0x2020
+#   0x9EB4FAC  BL sub_FFFFFFF00A1C0554   ; panic()
+#   0x9EB4FB0  ADRL X22, aLtePreinitProc
+#   0x9EB4FB8  B loc_FFFFFFF009EB4F08    ; backward branch to retry
+#
+# NOP'ing the panic BL lets execution fall through to the ADRL +
+# B loc_82F08 at 0x9EB4FB8, which goes BACK into the start_init
+# function body. This likely retries init exec — infinite loop
+# but at least no panic.
+#
+# Risk: tight infinite loop could flood the serial console. The
+# kernel may still have other activity (IOKit, timers, etc.) that
+# produce log output interleaved with the retry loop. Should at
+# least show more of what's going on than the single panic string.
+#
+# Apply ON TOP of exp31+33 chain (bootkc.exp33).
+
+va_base:       0xFFFFFFF007E2C000
+file_text_off: 0xE28000
+
+patches:
+  - name: exp34-start-init-panic-nop
+    effect: >
+      replace `BL sub_FFFFFFF00A1C0554` at 0xFFFFFFF009EB4FAC
+      (panic emitter in start_init) with NOP so init death doesn't
+      panic the kernel.
+    va:    0xFFFFFFF009EB4FAC
+    orig:  "6a2d0c94"
+    new:   "1f2003d5"
+
+scanners: []
