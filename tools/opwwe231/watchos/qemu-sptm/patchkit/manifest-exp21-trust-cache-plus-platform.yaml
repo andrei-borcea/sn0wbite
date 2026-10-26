@@ -1,0 +1,60 @@
+# EXPERIMENT #21: exp16 trampoline + also set CS_PLATFORM_BINARY in *a5.
+#
+# Diagnosis from exp16+exp18 breaking Sandbox: AMFI's trust-cache
+# success path at line 753 of the Hex-Rays decompile does
+# `*v108 |= 0x4000000u` (sets CS_PLATFORM_BINARY) BEFORE writing
+# `*a4 = {"trust-cache", 1}`. Our exp16 trampoline only wrote the
+# trust category; it did NOT set CS_PLATFORM_BINARY. Downstream
+# consumers (Sandbox evaluator) saw an inconsistent state: trust =
+# "trust-cache" but cs_flags lacks CS_PLATFORM_BINARY, which
+# apparently violates one of Sandbox's internal invariants and
+# triggers `panic("shenanigans!" @evaluate.c:5234)`.
+#
+# This revised trampoline mirrors AMFI's own trust-cache success
+# path FULLY: set CS_PLATFORM_BINARY in *a5 AND write "trust-cache"
+# to *a4 AND return 0. Should keep AMFI and Sandbox internally
+# consistent.
+#
+# Trampoline (48 bytes in the pad at 0xFFFFFFF00A1D4778):
+#   stp  x29, x30, [sp,#-0x10]!
+#   ldr  w8,  [x4]              ; *a5 = cs_flags
+#   orr  w8,  w8,  #0x4000000   ; CS_PLATFORM_BINARY
+#   str  w8,  [x4]
+#   mov  x0,  x3                ; a4 → arg1
+#   adrp x2,  0xFFFFFFF0074B9000 ; "trust-cache"
+#   add  x2,  x2,  #0xF46
+#   movz w1,  #1
+#   bl   0xFFFFFFF00893BFD0
+#   ldp  x29, x30, [sp], #0x10
+#   movz x0,  #0
+#   ret
+#
+# Apply on the 9-patch base alone (NOT composed with exp16).
+#
+#   patchkit.py apply bootkc.before-exp10 \
+#     -m manifest-exp21-trust-cache-plus-platform.yaml \
+#     -o bootkc.exp21
+
+va_base:       0xFFFFFFF007E2C000
+file_text_off: 0xE28000
+
+patches:
+  - name: exp21-trust-cache-plus-platform-trampoline
+    effect: >
+      pad trampoline at 0xFFFFFFF00A1D4778 that mirrors AMFI's own
+      trust-cache success path: sets CS_PLATFORM_BINARY in *a5
+      (cs_flags) via LDR/ORR #0x4000000/STR, then calls
+      sub_FFFFFFF00893BFD0(a4, 1, "trust-cache"), then returns 0.
+    va:    0xFFFFFFF00A1D4778
+    orig:  "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+    new:   "fd7bbfa9880040b908010c32880000b9e00303aa2297feb042183d91210080520e9e9d97fd7bc1a8000080d2c0035fd6"
+
+  - name: exp21-amfi-vcs-hook
+    effect: >
+      replace PACIBSP at offset +4 of _vnode_check_signature with
+      B 0xFFFFFFF00A1D4778, preserving BTI c at offset 0.
+    va:    0xFFFFFFF00893DA34
+    orig:  "7f2303d5"
+    new:   "515b6214"
+
+scanners: []

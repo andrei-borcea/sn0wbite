@@ -1,0 +1,64 @@
+# EXPERIMENT #23: NOP all four shenanigans assertions in sb_evaluate.
+#
+# exp22 silenced the first mismatch assertion (B.NE at
+# 0xFFFFFFF00977A8A8, evaluate.c:5234). The boot then hit the next
+# assertion three bytecode steps later, at evaluate.c:5237.
+# sb_evaluate (sub_FFFFFFF00977A6B8) has a cluster of four
+# assertions on the bytecode interpreter's state invariants, all
+# routing to the same shenanigans panic emitter:
+#
+#   0xFFFFFFF00977A8A8  B.NE  → 5234 (patched by exp22)
+#   0xFFFFFFF00977A8B0  CBNZ  → 5237
+#   0xFFFFFFF00977A8BC  CBNZ  → (another)
+#   0xFFFFFFF00977A960  B.EQ  → (another)
+#
+# NOPing all four lets the bytecode interpreter continue past any
+# of these internal invariant failures. Sandbox profile decisions
+# may become less consistent but should not panic the kernel; for
+# a serial-shell goal on qemu-sptm, "allow everything" is the
+# intended outcome.
+#
+# Apply ON TOP of exp21-18 (which already has exp21 trust-cache +
+# platform binary + exp18 fatal signal gate). This manifest
+# INCLUDES the exp22 patch so it can be applied without exp22.
+#
+#   patchkit.py apply bootkc.exp21-18 \
+#     -m manifest-exp23-sandbox-all-shenanigans.yaml \
+#     -o bootkc.exp21-18-23
+
+va_base:       0xFFFFFFF007E2C000
+file_text_off: 0xE28000
+
+patches:
+  - name: exp23-sandbox-sh-1-5234
+    effect: >
+      NOP B.NE at 0xFFFFFFF00977A8A8 (shenanigans @evaluate.c:5234).
+    va:    0xFFFFFFF00977A8A8
+    orig:  "211c0054"
+    new:   "1f2003d5"
+
+  - name: exp23-sandbox-sh-2-5237
+    effect: >
+      NOP CBNZ W0, loc_FFFFFFF00977AC3C at 0xFFFFFFF00977A8B0
+      (shenanigans @evaluate.c:5237).
+    va:    0xFFFFFFF00977A8B0
+    orig:  "601c0035"
+    new:   "1f2003d5"
+
+  - name: exp23-sandbox-sh-3
+    effect: >
+      NOP CBNZ W0, loc_FFFFFFF00977AC00 at 0xFFFFFFF00977A8BC
+      (third shenanigans gate — line unknown).
+    va:    0xFFFFFFF00977A8BC
+    orig:  "201a0035"
+    new:   "1f2003d5"
+
+  - name: exp23-sandbox-sh-4
+    effect: >
+      NOP B.EQ loc_FFFFFFF00977AC10 at 0xFFFFFFF00977A960 (fourth
+      shenanigans gate — likely the "unresolved delegation" check).
+    va:    0xFFFFFFF00977A960
+    orig:  "80150054"
+    new:   "1f2003d5"
+
+scanners: []

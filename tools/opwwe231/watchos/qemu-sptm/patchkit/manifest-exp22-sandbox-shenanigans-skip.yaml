@@ -1,0 +1,49 @@
+# EXPERIMENT #22: NOP the Sandbox shenanigans assertion at evaluate.c:5234.
+#
+# In sb_evaluate (sub_FFFFFFF00977A6B8), the sandbox profile bytecode
+# interpreter asserts an internal invariant between two profile-state
+# pointers at line 48 of the Hex-Rays decompile:
+#
+#   0xFFFFFFF00977A8A0  LDR  X8, [X23]           ; *v10
+#   0xFFFFFFF00977A8A4  CMP  X0, X8              ; v22 vs *v10
+#   0xFFFFFFF00977A8A8  B.NE loc_FFFFFFF00977AC2C ; mismatch → panic
+#   0xFFFFFFF00977A8AC  BL   sub_FFFFFFF009796B08
+#
+# The panic target `loc_FFFFFFF00977AC2C` sets `v37 = 5234` and
+# tail-calls `sub_FFFFFFF009796998("\"shenanigans!\" @%s:%d",
+# "evaluate.c", v37)` — a thunk to the kernel's `panic` at
+# `sub_FFFFFFF00A1C0498`.
+#
+# Replacing the `B.NE` with `NOP` makes the invariant mismatch fall
+# through to the normal evaluator path, bypassing the assertion for
+# the specific inconsistency triggered by our AMFI trust-cache
+# override. The sandbox evaluator then continues interpreting the
+# profile bytecode — if the inconsistency is cosmetic (two bytecode
+# refs that should be equal but aren't under our modified AMFI
+# state), the result is a correct policy evaluation; if it's load-
+# bearing, we'll see the next failure signal.
+#
+# Compose with exp16 or exp21 (preferred: exp21 which also sets
+# CS_PLATFORM_BINARY in *a5 for internal consistency), plus exp18
+# (fatal-signal-to-init gate neutralised) so that any downstream
+# init exec failure doesn't just panic the kernel.
+#
+#   patchkit.py apply bootkc.exp21-18 \
+#     -m manifest-exp22-sandbox-shenanigans-skip.yaml \
+#     -o bootkc.exp21-18-22
+
+va_base:       0xFFFFFFF007E2C000
+file_text_off: 0xE28000
+
+patches:
+  - name: exp22-sandbox-shenanigans-nop
+    effect: >
+      replace `B.NE loc_FFFFFFF00977AC2C` at 0xFFFFFFF00977A8A8 with
+      NOP so the sandbox evaluator's internal mismatch assertion
+      (shenanigans @evaluate.c:5234) is bypassed and the bytecode
+      interpreter continues past the mismatch.
+    va:    0xFFFFFFF00977A8A8
+    orig:  "211c0054"
+    new:   "1f2003d5"
+
+scanners: []

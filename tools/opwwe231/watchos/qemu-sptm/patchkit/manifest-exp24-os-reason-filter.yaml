@@ -1,0 +1,66 @@
+# EXPERIMENT #24: filter os_reason_create to return NULL for (ns=9, code=1).
+#
+# After exp22/23 bypassed Sandbox's shenanigans assertions, boot
+# reaches the kernel's `start_init` panic
+# ("initproc failed to start — exit reason namespace 9 subcode 0x1
+# description: none"). The root failure is still an exec BAD_MACHO
+# somewhere during init's startup: the specific validator that
+# fires is one of nine `BL sub_FFFFFFF009F6DDF4(9, 1)` call sites
+# inside `exec_mach_imgact`-equivalent `sub_FFFFFFF009EA7D28`, plus
+# three more inside `sub_FFFFFFF009EAF634`.
+#
+# Rather than hunt the specific site, filter at the common sink:
+# `sub_FFFFFFF009F6DDF4` is `os_reason_create(namespace, code)`.
+# When called with namespace == 9 (OS_REASON_EXEC) and code == 1
+# (EXEC_EXIT_REASON_BAD_MACHO), return NULL so the caller gets no
+# OS_REASON to attach; the subsequent `psignal_with_reason` or
+# `exit_with_reason` call sees a NULL reason and (per XNU source)
+# falls back to a plain exit without the BAD_MACHO branding, which
+# the init-side code handles differently from the explicit
+# BAD_MACHO panic.
+#
+# Trampoline (32 bytes at pad+0x30 = 0xFFFFFFF00A1D47A8):
+#   CMP W0, #9
+#   B.NE prolog         ; not namespace 9 → normal
+#   CMP X1, #1
+#   B.NE prolog         ; not BAD_MACHO → normal
+#   MOV X0, #0          ; return NULL
+#   RET
+# prolog:
+#   PACIBSP             ; re-execute the replaced function entry
+#   B 0xFFFFFFF009F6DDF8 ; jump to original 2nd instruction
+#
+# Entry patch: PACIBSP at 0xFFFFFFF009F6DDF4 → B pad_tramp.
+#
+# Apply ON TOP of exp21-18-23 (AMFI trust-cache + platform binary +
+# fatal-signal gate + 4-site Sandbox shenanigans bypass).
+#
+#   patchkit.py apply bootkc.exp21-18-23 \
+#     -m manifest-exp24-os-reason-filter.yaml \
+#     -o bootkc.exp21-18-23-24
+
+va_base:       0xFFFFFFF007E2C000
+file_text_off: 0xE28000
+
+patches:
+  - name: exp24-os-reason-filter-trampoline
+    effect: >
+      install trampoline at pad+0x30 (0xFFFFFFF00A1D47A8) that
+      filters os_reason_create for namespace=9 (OS_REASON_EXEC) and
+      code=1 (EXEC_EXIT_REASON_BAD_MACHO), returning NULL instead
+      of constructing a reason. Non-matching calls fall through to
+      the function's original prolog + body.
+    va:    0xFFFFFFF00A1D47A8
+    orig:  "0000000000000000000000000000000000000000000000000000000000000000"
+    new:   "1f240071a10000543f0400f161000054000080d2c0035fd67f2303d58d65f617"
+
+  - name: exp24-os-reason-create-hook
+    effect: >
+      replace PACIBSP at the entry of sub_FFFFFFF009F6DDF4
+      (os_reason_create) with B 0xFFFFFFF00A1D47A8, routing every
+      call through the (ns=9, code=1) filter.
+    va:    0xFFFFFFF009F6DDF4
+    orig:  "7f2303d5"
+    new:   "6d9a0914"
+
+scanners: []

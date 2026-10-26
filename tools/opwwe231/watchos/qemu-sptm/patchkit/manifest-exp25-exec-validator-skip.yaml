@@ -1,0 +1,61 @@
+# EXPERIMENT #25: bypass the exec_mach_imgact Mach-O validator at
+# 0xFFFFFFF009EA805C → force success for every exec.
+#
+# Replaces the exp24 filter approach (which returned NULL from
+# os_reason_create and caused a NULL-deref crash in the caller
+# that immediately writes to the returned struct) with a root-cause
+# fix at the actual validator decision.
+#
+# In sub_FFFFFFF009EA7D28 (exec_mach_imgact-equivalent):
+#
+#   0xFFFFFFF009EA805C  BL   sub_FFFFFFF009F56B48   ; Mach-O validator
+#   0xFFFFFFF009EA8060  CBZ  W0, loc_FFFFFFF009EA80B0 ; W0==0 → success path
+#   0xFFFFFFF009EA8064  CMP  W0, #0xB                ; W0 > 11?
+#   0xFFFFFFF009EA8068  B.HI loc_FFFFFFF009EA81E4   ; W0 > 11 → BAD_MACHO site 2a
+#   0xFFFFFFF009EA806C  SUB  W8, W0, #1
+#   ...
+#   0xFFFFFFF009EA8080  B.NE loc_FFFFFFF009EA81E8   ; W0 != 11 → BAD_MACHO site 2b
+#
+# Both BAD_MACHO code=1 sites inside this function fire when the
+# validator returns a non-zero error code. The validator checks
+# Mach-O structural invariants (segment layout, LC parsing, etc.)
+# that an adhoc/dev-built binary routinely violates in minor ways.
+#
+# Patching `CBZ W0, loc_FFFFFFF009EA80B0` into an unconditional
+# `B loc_FFFFFFF009EA80B0` makes every exec take the success path
+# regardless of what the validator reported. For a kernel-dev VM
+# where getting to a shell is the goal, this is the cheapest viable
+# fix.
+#
+# Risk: a genuinely malformed Mach-O that the validator would catch
+# might now be loaded, which could crash during execution. Mitigated
+# by the fact that `/sbin/launchd` and the system binaries in the
+# shared cache are well-formed — the validator was rejecting them
+# because of adhoc-signature side-effects, not actual structural bugs.
+#
+# Apply ON TOP of exp21-18-23 (AMFI trust-cache + platform binary +
+# fatal-signal gate + 4-site Sandbox shenanigans bypass). Do NOT
+# compose with exp24 (whose os_reason_create NULL filter crashes
+# the caller).
+#
+#   patchkit.py apply bootkc.exp21-18-23 \
+#     -m manifest-exp25-exec-validator-skip.yaml \
+#     -o bootkc.exp21-18-23-25
+
+va_base:       0xFFFFFFF007E2C000
+file_text_off: 0xE28000
+
+patches:
+  - name: exp25-exec-validator-force-success
+    effect: >
+      replace `CBZ W0, loc_FFFFFFF009EA80B0` at
+      0xFFFFFFF009EA8060 with `B loc_FFFFFFF009EA80B0`, forcing
+      exec_mach_imgact to treat every Mach-O validator result as
+      success. Bypasses both BAD_MACHO code=1 sites in
+      sub_FFFFFFF009EA7D28 (0xFFFFFFF009EA81AC and
+      0xFFFFFFF009EA81E8) by making their guards unreachable.
+    va:    0xFFFFFFF009EA8060
+    orig:  "80020034"
+    new:   "14000014"
+
+scanners: []
