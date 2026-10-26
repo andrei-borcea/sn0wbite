@@ -140,6 +140,41 @@ Watch to land there).
    method returns `block_count` as a 32-bit out-arg, so the fix needs to
    be upstream of this store; full Ghidra chain analysis is deferred.
 
+### 2026-10-26 later: bypass of the APFS size-mismatch check
+
+The APFS sanity check in `nx_dev_init` that trips the kernel into the
+retry loop is at:
+
+```
+0xfffffff0098a46b4  ldr x25, [x9, #0x28]     ; APFS container block_count
+0xfffffff0098a46b8  mul x8, x25, x20          ; × block_size
+0xfffffff0098a46bc  cmp x8, x28                ; vs device_size (u32 truncated)
+0xfffffff0098a46c0  b.hi 0xfffffff0098a4870   ; container > device → "corruption"
+```
+
+Flipping that one `b.hi` to a `nop` (file offset `0x28a06c0`,
+`880d0054` → `1f2003d5`) bypasses the "container size > device size"
+sanity gate. With the patch the boot gets four more APFS phases
+further:
+
+```
+dev_init:299: md0 block count 741376    ← still truncated, cosmetic
+nx_mount:1157: md0 initializing cache w/hash_size 8192 and cache size 22528
+nx_mount:1482: md0 checkpoint search: largest xid 595, best xid 595 @ 3
+nx_mount:1509: md0 stable checkpoint indices: desc 2 data 3
+apfs_mount_livefs:29660: md0s1 failed to fetch the extentref tree (error 6)
+```
+
+The `ENXIO` on the extent reference tree is the symptom of the same
+32-bit truncation deeper in the stack: the extent fetch issues an I/O
+beyond `device_size` (the 362 MB cap) and the md driver rejects it. A
+real fix needs to patch the block_count population itself, which does
+not fit inline in the two existing instruction slots
+(`ldur w9, [fp,-0x54] ; str w9, [x19,#0x4f0]`) and requires either a
+trampoline into kernel padding or a surgical rewrite of the virtual
+method behind `[x19, #0x4e0]+0x10`. Deferred to a future session with
+Ghidra available.
+
    Minimal rootfs variant: the dyld shared cache alone is 3.6 GB and
    indivisible, so trimming the rootfs to under 4 GB (the 32-bit cap)
    requires aggressive `PrivateFrameworks` pruning that would cascade
