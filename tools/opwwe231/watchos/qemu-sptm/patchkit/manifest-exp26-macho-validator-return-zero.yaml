@@ -1,0 +1,62 @@
+# EXPERIMENT #26: patch sub_FFFFFFF009F56B48 (Mach-O validator)
+# so every error-return site returns 0 (success), preserving all
+# side-effect state setup the function performs.
+#
+# After exp25's "force success at caller" approach crashed because
+# the downstream code uses state that the validator sets up only
+# as a SIDE EFFECT of running, this experiment keeps the validator
+# fully executing but zeroes its RESULT on each of the four error
+# paths that it emits. Side effects remain intact; the function
+# always reports success.
+#
+# The four `MOV W0, #<code>` instructions preceding the function's
+# epilogue:
+#
+#   0xFFFFFFF009F56BA4   MOV W0, #2  (early overflow / size check)
+#   0xFFFFFFF009F56C54   MOV W0, #7  (CMS blob check)
+#   0xFFFFFFF009F570F0   MOV W0, #4  (sealed-code mismatch)
+#   0xFFFFFFF009F57118   MOV W0, #2  (fallthrough reject)
+#
+# All replaced with MOV W0, #0 (MOVZ W0, #0 = 0x52800000).
+#
+# Compose with exp21-18-23. The AMFI trust-cache override, the
+# fatal-signal gate, and the Sandbox shenanigans NOPs are all
+# still required.
+#
+#   patchkit.py apply bootkc.exp21-18-23 \
+#     -m manifest-exp26-macho-validator-return-zero.yaml \
+#     -o bootkc.exp21-18-23-26
+
+va_base:       0xFFFFFFF007E2C000
+file_text_off: 0xE28000
+
+patches:
+  - name: exp26-macho-validator-ret0-at-ba4
+    effect: >
+      MOV W0, #2 at 0xFFFFFFF009F56BA4 → MOV W0, #0.
+    va:    0xFFFFFFF009F56BA4
+    orig:  "40008052"
+    new:   "00008052"
+
+  - name: exp26-macho-validator-ret0-at-c54
+    effect: >
+      MOV W0, #7 at 0xFFFFFFF009F56C54 → MOV W0, #0.
+    va:    0xFFFFFFF009F56C54
+    orig:  "e0008052"
+    new:   "00008052"
+
+  - name: exp26-macho-validator-ret0-at-0f0
+    effect: >
+      MOV W0, #4 at 0xFFFFFFF009F570F0 → MOV W0, #0.
+    va:    0xFFFFFFF009F570F0
+    orig:  "80008052"
+    new:   "00008052"
+
+  - name: exp26-macho-validator-ret0-at-118
+    effect: >
+      MOV W0, #2 at 0xFFFFFFF009F57118 → MOV W0, #0.
+    va:    0xFFFFFFF009F57118
+    orig:  "40008052"
+    new:   "00008052"
+
+scanners: []
