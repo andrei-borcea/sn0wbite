@@ -1,0 +1,82 @@
+# patchkit manifest for Watch7,11 (T8310) watchOS 27.0.1 build 24R365
+# target: firmware/bootkc extracted from Watch7,11_27.0.1_24R365_Restore.ipsw
+# reference bootkc.orig SHA-256 of __text window: n/a (verify against stock IPSW)
+#
+# VA ↔ file-offset: __text at VA 0xFFFFFFF007E2C000 maps to file offset 0xE28000.
+# Those are the defaults; left explicit here for self-containment.
+va_base:       0xFFFFFFF007E2C000
+file_text_off: 0xE28000
+
+# Chain-of-9 that currently reaches APFS mount + launchd exec in qemu-sptm.
+# Each patch extracted from the bootkc.orig↔bootkc diff after the hand-edits.
+patches:
+
+  # --- 1. APFS "container size > device size" sanity bypass ---
+  - name: apfs-container-sanity-nop
+    effect: "convert `b.hi` early-fail to nop so APFS keeps mounting when it thinks the container is larger than the backing device"
+    va:    0xFFFFFFF0098A46C0
+    orig:  "880d0054"   # B.HI <reject>
+    new:   "1f2003d5"   # NOP
+
+  # --- 2. APFS block-count store → trampoline ---
+  - name: apfs-blockcount-redirect
+    effect: "replace the `str x0,[x19,#0x508]` that writes the on-disk block_count with a `b` to the trampoline that hard-codes it"
+    va:    0xFFFFFFF0097B5AB4
+    orig:  "608602f9"   # STR  X0, [X19,#0x508]
+    new:   "7733b317"   # B    0xFFFFFFF008482890 (26-bit signed branch)
+
+  # --- 3. Trampoline: hard-code block_count = 0x010B5000 (8.4 GB / 512) ---
+  # Lives in a 16-byte NOP pad at VA 0xFFFFFFF008482890. Returns to the next
+  # instruction after patch #2 (VA 0xFFFFFFF0097B5AB8).
+  - name: apfs-blockcount-trampoline
+    effect: "movz w0,#0x5000 ; movk w0,#0x010B,lsl#16 ; str x0,[x19,#0x508] ; b 0xFFFFFFF0097B5AB8"
+    va:    0xFFFFFFF008482890
+    orig:  "1f2003d51f2003d51f2003d51f2003d5"   # 4× NOP pad
+    new:   "00008a526021a072608602f987cc4c14"   # see effect
+
+  # --- 4. md driver 32-bit size truncation check ---
+  - name: md-32bit-size-check-nop
+    effect: "nop the `b.hs` that rejects large (>4GB) ramdisks in the md driver"
+    va:    0xFFFFFFF009B6058C
+    orig:  "82020054"   # B.HS <reject>
+    new:   "1f2003d5"   # NOP
+
+  # --- 5. md len success — force the next check to always take the OK branch ---
+  - name: md-length-force-ok
+    effect: "turn `b.ls` into unconditional `b` so md length computation hands back success instead of truncating"
+    va:    0xFFFFFFF009B60598
+    orig:  "69000054"   # B.LS <ok>
+    new:   "03000014"   # B    <ok>
+
+  # --- 6. md "start outside backing storage" bypass ---
+  - name: md-start-outside-nop
+    effect: "nop the `b.ls` that rejects start offsets outside the ramdisk's backing range"
+    va:    0xFFFFFFF00981FC74
+    orig:  "69020054"   # B.LS <reject>
+    new:   "1f2003d5"   # NOP
+
+  # --- 7. md "range outside backing storage" force-ok ---
+  - name: md-range-outside-force-ok
+    effect: "turn `b.ls` into unconditional branch so md accepts the range anyway"
+    va:    0xFFFFFFF00981FC88
+    orig:  "e9050054"   # B.LS <reject>
+    new:   "2f000014"   # B    <ok>
+
+  # --- 8. mdevstrategy "sink buffer not mapped" bypass ---
+  - name: mdevstrategy-sink-not-mapped-nop
+    effect: "nop the `b.eq` that bails out when the sink mapping is NULL"
+    va:    0xFFFFFFF009B60634
+    orig:  "200c0054"   # B.EQ <bail>
+    new:   "1f2003d5"   # NOP
+
+  # --- 9. mdevstrategy "source buffer not mapped" bypass ---
+  - name: mdevstrategy-source-not-mapped-nop
+    effect: "nop the `cbz` that bails out when the source mapping is NULL"
+    va:    0xFFFFFFF009B606EC
+    orig:  "77070034"   # CBZ W23, <bail>
+    new:   "1f2003d5"   # NOP
+
+# Scanners are intentionally empty for the reference manifest.
+# Add new experiments (bulk EINVAL→success, AMFI prolog stub, etc.) here as
+# separate, individually-toggleable patch bundles.
+scanners: []

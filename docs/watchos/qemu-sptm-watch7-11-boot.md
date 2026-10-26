@@ -337,3 +337,103 @@ projects (vphone-cli, etc.) is silently ignored on watchOS 27.
 - ✅ Decrypt the IPSW rootfs AEA via WKMS lookup.
 - ⚠️ Boot the decrypted rootfs: blocked on an XNU `md` 32-bit length
   truncation; follow-up ticket to find and patch the upstream cast.
+
+### 2026-10-26: IDA Pro 9.4 Hex-Rays REA of AMFI + shared_region
+
+Loaded the full `bootkc_watch7_11` into IDA Pro 9.4 and drove it via
+the `ida-pro-mcp` JSON-RPC server on `127.0.0.1:13337`. Full
+Hex-Rays decompile of the two critical functions in
+`scratchpad/ida_work/`:
+
+- `amfi_vcs_hexrays.c` — AMFI `vnode_check_signature` MACF hook at
+  `0xfffffff00893da30` (0x14c4 bytes).
+- `shared_region_check_np.c` — kernel syscall at
+  `0xfffffff009f77788` (0xb04 bytes).
+
+**Correction to the earlier r2+r2ghidra model.** The fail flag in
+`vnode_check_signature` is NOT `w22` as previously inferred:
+
+| | r2ghidra model (wrong) | Hex-Rays model (correct) |
+|---|---|---|
+| CT policy reject | `w22 = 0` at `0x893e5e0` | `LODWORD(v31) = 0` at `0x893e5e0` + `v107 = 1` at `0x893e61c` |
+| Adhoc / dev-signed reject | `w22 = 0` at `0x893e618` | `LODWORD(v31) = 0` at `0x893e618` (same slot) |
+| Actual decision | `w22` late check | `CBZ W22, 0x893e7c8` at `0xfffffff00893e750` |
+
+The single decision is the CBZ at `0xfffffff00893e750`: if the trust
+bitmap (W22) is zero, jump to the "AMFI: code signature validation
+failed" print and then write `untrusted` (code 10) into the output
+`a4` via `sub_FFFFFFF00893BFD0`. Otherwise reach the dynamic trust
+assignment via `sub_FFFFFFF00893FF44(..., "dynamic", ...)` at
+`0xfffffff00893e79c`. `sub_FFFFFFF00893FF44` turns out to be a thin
+OOP-JIT entitlement check (returns 1 for anything without
+`com.apple.private.oop-jit.{loader,runner}`), so for
+`dyld_shared_cache_arm64e` the AMFI success path is actually
+functional.
+
+**Why the previous `w22 = 1` patches "removed the log but didn't fix
+anything":** they successfully redirected AMFI to the success path,
+AMFI wrote a `dynamic` trust into `*a4`, AMFI returned 0. The
+rejection comes afterwards in the VM shared region setup
+(`vm_shared_region_create` / `_auth_remap` / `_enter`), where a
+`dyld_shared_cache` that AMFI only certified as "dynamic" (not
+"trusted-cache") is still refused for mapping. `dyld` then calls
+`shared_region_check_np` (syscall 294) and the kernel returns 12
+(`ENOMEM`) from the `copyout` error path at
+`0xfffffff009f77e04`, because `vm_shared_region_start_address()` /
+`vm_shared_update_task()` never populated the region.
+
+**Conclusion.** A one-instruction AMFI patch is not enough; a
+multi-site patch chain on the VM shared region creation path would
+be needed to make an adhoc shared cache produce a `trusted-cache`
+mapping. That is realistically 10–20 more hours of REA on a chain
+whose outcome is still only a serial-console shell (`qemu-sptm` has
+no DCP/AGX for SpringBoard).
+
+**Deeper REA (2026-10-26, same IDA session).** The function hosting
+the real rejection is `shared_region_map_and_slide_setup`
+= `sub_FFFFFFF009F79CA8` at `0xfffffff009f79ca8`, 0x27a0 bytes =
+1803 Hex-Rays lines. Decompile saved in
+`scratchpad/ida_work/map_and_slide_setup.c`. Return-value
+distribution:
+
+| Exit value | Meaning | Branch count | Example sites |
+|---|---|---|---|
+| `v39 = 0` (success) | KERN_SUCCESS | 1 | `L1657 @0x9f7a504` |
+| `v39 = 22` (EINVAL) | validation reject | 11 | `L906 @0x9f7b638`, `L1408 @…`, `L1657-adjacent LABEL_563` |
+| `v39 = 12` (ENOMEM) | kalloc failure | 1 | `L358 @0x9f7a060` — this is `sub_FFFFFFF0099D1514(…)==NULL`, NOT the adhoc rejection |
+| `v39 = 1` (KERN_FAILURE) | Mach fault | 6 | mapping-op failures |
+| `v39 = v<other>` | delegated | 7 | nested helpers |
+
+Each of the 11 EINVAL branches guards a different invariant
+(mapping range in-bounds, slide-info size, cs-blob consistency,
+sr-cache header counts, protection flags, auth remap). Finding
+*which one* fires for an adhoc shared cache requires a live trace
+(instrumentation of the kernel at each branch, or a step-trace from
+QEMU gdbstub). Static-only, the branches cannot be ordered.
+
+**Status of this REA sub-task.** The IDA Hex-Rays contribution is
+complete: the AMFI vnode_check_signature flow is fully mapped, the
+previous session's `w22`-patch inference is corrected, and the real
+blocker is now localised to `sub_FFFFFFF009F79CA8` with a labelled
+exit map but without a verified single patch site. A productive
+next step is either a kernel-side instrumentation pass (patch every
+EINVAL exit to also print a unique marker into the serial log, then
+boot and read which marker fires), or the pivot path below.
+
+Three realistic directions:
+
+1. **Custom sysroot (jprx pattern).** Compile a `bash` + `launchd`
+   + minimal `libSystem` for watchOS 27 arm64e against the Xcode
+   watchOS 27 SDK, side-load it instead of the stock rootfs, and
+   skip the shared cache entirely. This is how `jprx/darwin-vm`
+   reaches a shell on iPhone 12-17 targets.
+2. **Full VM-shared-region patch chain.** Decompile the five
+   functions (`_cs_blob_create`, `_cs_shared_region_create`,
+   `_vm_shared_region_create`, `_vm_shared_region_auth_remap`,
+   `_vm_shared_region_enter`) with Hex-Rays and patch each
+   `*a4 = untrusted` write + each trust-level check. Many patches,
+   deep understanding of the trust-cache state machine required.
+3. **Accept current progress.** `qemu-sptm` already reaches APFS
+   mount + `launchd` exec, which is the practical ceiling for a
+   kernel-dev sandbox without a GPU emulation. Pivot to the Watch 2
+   bringup work (the real target: Snapdragon W5, arm64).
