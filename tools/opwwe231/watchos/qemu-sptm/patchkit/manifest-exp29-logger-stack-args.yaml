@@ -1,0 +1,57 @@
+# EXPERIMENT #29: os_reason_create logger with stack-based varargs
+# (Darwin AArch64 variadic convention).
+#
+# exp28's logger output was malformed because AMFI's printf wrapper
+# reads varargs from the stack (va_list = &a9 in the inner function
+# sub_FFFFFFF00A0766B4, which lives at [SP+0] of the caller's frame
+# at BL time), not from X1-X7 registers. This trampoline stores
+# the varargs at [SP+0], [SP+8], [SP+16] before the BL so the
+# format walker reads them correctly.
+#
+# Trampoline at pad+0x100 = 0xFFFFFFF00A1D4878, 64 bytes code + 28
+# bytes fmt:
+#   SUB SP, SP, #0x60
+#   STP X29, X30, [SP, #0x30]
+#   STP X0, X1, [SP, #0x40]       ; save ns, code
+#   STP X2, X3, [SP, #0x50]
+#   STR W0, [SP, #0]              ; vararg #1 = ns
+#   STR X1, [SP, #8]              ; vararg #2 = code
+#   STR X30, [SP, #0x10]          ; vararg #3 = caller LR (pre-BL)
+#   ADRP X0, fmt_page
+#   ADD X0, X0, #imm
+#   BL sub_FFFFFFF008958174
+#   LDP X2, X3, [SP, #0x50]
+#   LDP X0, X1, [SP, #0x40]
+#   LDP X29, X30, [SP, #0x30]
+#   ADD SP, SP, #0x60
+#   PACIBSP
+#   B 0xFFFFFFF009F6DDF8
+#
+# Apply on 9-patch base alone (pure instrumentation).
+#
+#   patchkit.py apply bootkc.before-exp10 \
+#     -m manifest-exp29-logger-stack-args.yaml \
+#     -o bootkc.exp29
+
+va_base:       0xFFFFFFF007E2C000
+file_text_off: 0xE28000
+
+patches:
+  - name: exp29-logger-stack-args
+    effect: >
+      install logger trampoline at pad+0x100 (0xFFFFFFF00A1D4878)
+      with varargs pushed to stack at [SP+0..16] before BL to AMFI
+      printf, satisfying Darwin AArch64 variadic ABI.
+    va:    0xFFFFFFF00A1D4878
+    orig:  "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+    new:   "ff8301d1fd7b03a9e00704a9e20f05a9e00300b9e10700f9c8ff60d3e81300b9fe1b00b90000009000002391340e9e97e20f45a9e00744a9fd7b43a9ff8301917f2303d54f65f61752534e43206e733d257520636f64653d256c6c75206c7268693d2575206c726c6f3d25750a000000"
+
+  - name: exp29-os-reason-hook
+    effect: >
+      replace PACIBSP at os_reason_create entry (0xFFFFFFF009F6DDF4)
+      with B to logger trampoline at 0xFFFFFFF00A1D4878.
+    va:    0xFFFFFFF009F6DDF4
+    orig:  "7f2303d5"
+    new:   "a19a0914"
+
+scanners: []
