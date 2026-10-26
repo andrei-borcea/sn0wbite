@@ -1,0 +1,38 @@
+# EXPERIMENT #36: skip BAD_MACHO at the confluence (0xFFFFFFF009EA81E8).
+#
+# exp35 patched 0xEA81E4 (reached only from the B.HI path when
+# validator returns > 11). But the B.NE path at 0xEA8080 jumps
+# directly to 0xEA81E8, skipping 0xEA81E4. So exp35 only handles
+# one of the two paths.
+#
+# Both error paths converge at 0xFFFFFFF009EA81E8 (which is where
+# `MOV W0, #9` originally lived; exp30 proved this address IS
+# patch-effective at runtime). Replace it with a direct branch to
+# the function's success-return path at 0xFFFFFFF009EA8294
+# (MOV W0, #0 ; B loc_82A8).
+#
+# exec_mach_imgact (sub_FFFFFFF009EA7D28) returns W0=0 (success)
+# to its caller (posix_spawn). The actual Mach-O load didn't
+# happen so the "new" process state is the OLD caller state. For
+# a SETEXEC spawn of launchd→init, this means launchd's own
+# process continues to run with its own code intact — hopefully
+# launchd can tolerate this and proceed with its own event loop
+# instead of being replaced.
+
+va_base:       0xFFFFFFF007E2C000
+file_text_off: 0xE28000
+
+patches:
+  - name: exp36-exec-confluence-skip
+    effect: >
+      replace `MOV W0, #9` at 0xFFFFFFF009EA81E8 with
+      `B 0xFFFFFFF009EA8294`, skipping both the BAD_MACHO reason
+      construction and the psignal_with_reason kill call. Both
+      error paths (W0 > 11 via B.HI → fall through, and W0 != 11
+      via B.NE direct) converge here and get redirected to the
+      function's success return.
+    va:    0xFFFFFFF009EA81E8
+    orig:  "20018052"
+    new:   "2b000014"
+
+scanners: []

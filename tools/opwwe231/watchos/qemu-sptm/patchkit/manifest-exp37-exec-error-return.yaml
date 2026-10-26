@@ -1,0 +1,32 @@
+# EXPERIMENT #37: redirect exec_mach_imgact BAD_MACHO confluence to
+# "error return" path instead of "success return".
+#
+# exp36 jumped to 0xFFFFFFF009EA8294 (MOV W0,#0 → success return).
+# Result: exec returns success without actually loading the new
+# Mach-O, launchd thinks exec worked, downstream SIGSEGV in
+# userspace (process state inconsistent).
+#
+# This variant jumps to 0xFFFFFFF009EA82A4 (MOV X0, X20 → return
+# whatever error code was computed, e.g., 85 for the W0>11 path).
+# exec_mach_imgact returns a NON-ZERO error to posix_spawn. For
+# POSIX_SPAWN_SETEXEC, this means "exec failed; caller process
+# state is preserved; caller gets back the error". launchd then
+# handles the exec failure (not death) and continues its event
+# loop.
+
+va_base:       0xFFFFFFF007E2C000
+file_text_off: 0xE28000
+
+patches:
+  - name: exp37-exec-badmacho-error-return
+    effect: >
+      replace `MOV W0, #9` at 0xFFFFFFF009EA81E8 with
+      `B 0xFFFFFFF009EA82A4`, so BOTH BAD_MACHO error paths
+      (W0>11 via B.HI and W0!=11 via B.NE) converge to the
+      function's error-return path (MOV X0, X20) WITHOUT ever
+      calling os_reason_create or psignal_with_reason.
+    va:    0xFFFFFFF009EA81E8
+    orig:  "20018052"
+    new:   "2f000014"
+
+scanners: []

@@ -1,0 +1,47 @@
+# EXPERIMENT #35: skip the entire exec_mach_imgact BAD_MACHO + psignal
+# block by branching from the error entry (0xFFFFFFF009EA81E4) directly
+# to the "W0 = 0 success return" at 0xFFFFFFF009EA8294.
+#
+# Discovered via BRK + register dump (see docs/watchos/gdbstub-brk-findings.md):
+# the firing BAD_MACHO site is at 0xFFFFFFF009EA81F0 and reached when
+# the Mach-O validator sub_FFFFFFF009F56B48 returns > 11 (v34 > 0xB).
+# exp26 (patching the validator to return 0) didn't take effect
+# because SPTM protects that region. The 0xEA81xx range (specifically
+# 0xEA81AC, 0xEA81E8, verified by exp30) IS patch-effective.
+#
+# This patch replaces `MOV W20, #0x55` at 0xFFFFFFF009EA81E4 (the
+# first instruction of the W0≠11 error path) with a direct
+# `B loc_FFFFFFF009EA8294`. The branch target is `MOV W0, #0` right
+# before the function's success-return branch (`B loc_82A8`), which
+# makes exec_mach_imgact return 0 without constructing the BAD_MACHO
+# reason or signaling init.
+#
+# Risk: exec returns "success" without actually loading the new
+# Mach-O. The caller (posix_spawn) resumes as if the exec worked.
+# For a SETEXEC spawn, the process's memory should've been replaced;
+# if we skip the replacement, process state is partial/garbage →
+# likely SIGSEGV in userspace from executing stale instructions.
+#
+# Known tradeoff documented. If this gets us further than
+# "initproc failed to start" (even into a different kind of crash),
+# we're closer to understanding the real path.
+#
+# Apply on top of bootkc.exp16:
+#   patchkit.py apply bootkc.exp16 -m manifest-exp35-exec-skip-badmacho.yaml -o bootkc.exp35
+
+va_base:       0xFFFFFFF007E2C000
+file_text_off: 0xE28000
+
+patches:
+  - name: exp35-exec-badmacho-skip
+    effect: >
+      replace `MOV W20, #0x55` at 0xFFFFFFF009EA81E4 with
+      `B 0xFFFFFFF009EA8294` to skip the BAD_MACHO reason creation
+      and psignal_with_reason, routing straight to the function's
+      MOV W0,#0 return path. Function returns 0 (success) to the
+      exec caller.
+    va:    0xFFFFFFF009EA81E4
+    orig:  "b40a8052"
+    new:   "2c000014"
+
+scanners: []
