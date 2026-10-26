@@ -174,6 +174,55 @@ dyld[1]: ignite() returned 8; ignition disabled
 ...
 ```
 
+### 2026-10-26 even later: `cs_enforcement_disable=1` bootarg path explored
+
+The `cs_enforcement_disable=1` kernel bootarg is **recognised** by
+watchOS 27 (`_initializeAppleMobileFileIntegrity(): cs_enforcement
+disabled by boot-arg` appears in the log), but AMFI then calls
+`panic("can't has cs_enforcement_disable" @AppleMobileFileIntegrity.cpp:5710)`
+to actively kill the boot. The panic sits in a tiny helper function at
+`0xfffffff0089573ec..0x895741c`:
+
+```asm
+0x8957400  adrp x8, "AppleMobileFileIntegrity.cpp"
+0x8957404  add  x8, x8, #0x3fe
+0x8957408  mov  w9, #0x164e            ; line 5710
+0x895740c  stp  x8, x9, [sp]
+0x8957410  adrp x0, "can't has cs_enforcement_disable" (0xfffffff0074b9b66)
+0x8957414  add  x0, x0, #0xb66
+0x8957418  bl   panic                   ; patched -> nop
+0x895741c  bti  c
+...
+0x8957428  brk  #0xbffc                 ; patched -> ret
+```
+
+Flipping the `bl panic` to a `nop` and the terminal `brk` to a `ret`
+(file offsets `0x1953418` and `0x1953428`, bytes `07060094 -> 1f2003d5`
+and `80ff37d4 -> c0035fd6`) lets `cs_enforcement_disable=1` take
+effect without the counter-panic.
+
+**Result**: after the panic bypass + `cs_enforcement_disable=1`, the
+early kernel init enters an **infinite loop** of:
+
+```
+trustCacheIsDuplicateImg4: unable to extract img4 module: 0x06 | 0x25 | 1
+loadTrustCacheWithExternalManifest: unable to load trust cache: -536870206
+```
+
+(spamming hundreds of thousands of lines in ~90 s, long before the
+APFS mount). Disabling `cs_enforcement` apparently makes some trust
+cache loader lose its gating and retry forever; it never progresses
+past that loop. So `cs_enforcement_disable=1` is a dead end on its
+own.
+
+The `amfi_get_out_of_my_way=1` bootarg (used by community iOS VM
+projects like vphone-cli) is **silently ignored** on watchOS 27 — the
+AMFI reject of the dyld cache still fires with it set.
+
+See the extended bootarg attempt in `boot_rootfs_amfi3.log` and the
+baseline (no cs_enforcement_disable) still reaching APFS mount in
+`boot_rootfs_amfi4.log`.
+
 ### Next blocker: AMFI rejects the dyld shared cache
 
 Beyond the APFS mount, `/sbin/launchd` execs, `dyld` runs, mmaps the
