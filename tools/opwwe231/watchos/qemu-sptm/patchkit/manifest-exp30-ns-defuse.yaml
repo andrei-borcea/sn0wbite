@@ -1,0 +1,46 @@
+# EXPERIMENT #30: defuse OS_REASON_EXEC namespace for both BAD_MACHO
+# sites in exec_mach_imgact.
+#
+# The exp29 logger definitively identified `BL sub_FFFFFFF009F6DDF4`
+# at 0xFFFFFFF009EA81B4 as the firing site for os_reason_create(ns=9,
+# code=1) that causes `initproc failed to start — namespace 9
+# subcode 0x1`. Composing with exp17 (CBZ→B at 0x9EA8198) does not
+# suppress this call in practice — either SPTM re-maps the region
+# or there is a non-sequential entry to the error block.
+#
+# This patch takes a different angle: change the namespace argument
+# at both BAD_MACHO sites from 9 (OS_REASON_EXEC) to 0
+# (OS_REASON_INVALID). The reason is still created (so caller
+# code can still dereference it without crashing), but the
+# namespace recorded on the proc struct is 0, which doesn't match
+# the specific `namespace 9 subcode 0x1` panic condition in
+# start_init.
+#
+# Risk: start_init's panic may fire with "namespace 0 subcode 0x1"
+# instead, or (more likely) the panic path checks for specific
+# namespaces and skips INVALID ones, falling through to a benign
+# cleanup. Empirically determined by boot.
+#
+# Apply ON TOP of exp21-18-23-26 (full known-good chain to the
+# `initproc failed to start` blocker).
+
+va_base:       0xFFFFFFF007E2C000
+file_text_off: 0xE28000
+
+patches:
+  - name: exp30-ns-defuse-site1
+    effect: >
+      Change MOV W0,#9 to MOV W0,#0 at 0xFFFFFFF009EA81AC — defuses
+      the first BAD_MACHO site's namespace argument.
+    va:    0xFFFFFFF009EA81AC
+    orig:  "20018052"
+    new:   "00008052"
+
+  - name: exp30-ns-defuse-site2
+    effect: >
+      Same at 0xFFFFFFF009EA81E8 — second BAD_MACHO site.
+    va:    0xFFFFFFF009EA81E8
+    orig:  "20018052"
+    new:   "00008052"
+
+scanners: []
