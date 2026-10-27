@@ -30,7 +30,7 @@ in-kernelcache byte edits — not an EL2 shim — are:
 | --- | --- | --- |
 | TCR_EL1 TG0/TG1 = 16KB granule (A53 has no TGran16, ARMv8.2+) | **v1 TCR constant 16KB→4KB** | ✅ verified in Unicorn |
 | Page-table bootstrap uses 16KB entries-per-table `0x800` + 32MB L2 block `0x2000000` | **v2 pagetable constants 16KB→4KB** | ✅ verified in Unicorn (PT entries drop from 8258 to 2114, exact 4× ratio) |
-| PAC MSRs (`apia/apib/apda/apdb/apga key lo/hi`) + Apple IMPDEF `APCTL` enables | **v3 PAC key MSR → nop** | 🔜 planned |
+| PAC MSRs (`apia/apib/apda/apdb/apga key lo/hi`) + Apple IMPDEF `APCTL`/`APRR_EL1` early-boot accesses | **v3 PAC key MSR + Apple IMPDEF reset-vector + APRR vector-handler → nop** | ✅ verified in Unicorn (22 insns NOPped, still reaches MMU-enable) |
 | 331k PAC-flavored instructions (`pacia/braa/retaa/…`) across code segments | **v4 PAC bulk strip** (reuses `tools/watchos/port/kernel_patch.py`) | 🔜 planned |
 | 10k LSE atomics (`ldadd/stadd/cas…`) across code segments | **v5 LSE bulk strip to ldxr/stxr pairs** | 🔜 planned |
 | 82 distinct Apple IMPDEF system registers | **(moved to EL2 shim, not a kernelcache patch)** | — |
@@ -54,10 +54,18 @@ micro-hypervisor stage; that work is tracked separately.
   `a3e7742cf0a5c1ce…`. Harness still reaches MMU-enable, now with
   6628 insns and 2114 PT entries — the ~4× drop that matches the
   2048→512 entries-per-table change exactly.
-- v3..v5 are design-complete (see table above) but not yet written. Each
-  needs its own manifest and own verification. Order matters: v3 (PAC key
-  MSRs in the reset vector) before v4 (PAC bulk strip across all code
-  segments) so a device-side run doesn't trap on the key setup first.
+- **v3 PAC key MSR + Apple IMPDEF reset-vector + APRR vector-handler
+  → nop** — 22 instructions NOPped: 10 PAC key MSRs
+  (`apia/apib/apda/apdb/apga key lo/hi`), 6-insn APCTL polling+enable
+  block, 2 MSR to `s3_4_c15_c1_{0,1}`, 4 MRS APRR_EL1 in exception
+  vector handlers. Composed v1+v2+v3 SHA256 `1533c23518deff58…`.
+  Harness reaches MMU-enable; the two "Apple regs stubbed" the harness
+  still reports are a known op0 decode quirk in `boot_harness.py`'s
+  `sr()` (displays `s5_*` instead of `s3_*`), not real instructions
+  in __TEXT_EXEC.
+- v4..v5 still planned. v4 is the bulk PAC strip across all code
+  segments (reuses `tools/watchos/port/kernel_patch.py` which already
+  implements the 55 280-site rewrite); v5 is LSE → ldxr/stxr.
 
 ## Usage
 

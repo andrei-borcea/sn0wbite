@@ -1,0 +1,139 @@
+# patchkit-opw2 manifest v3 — PAC key MSRs + Apple IMPDEF sysreg accesses in the
+# reset vector → NOP
+#
+# Depends on: v1 (TCR 4K), v2 (pagetable 4K).
+#
+# The reset vector programs 10 PAC key registers (ARMv8.3) and reads/writes 4
+# Apple IMPDEF system registers (APCTL at S3_4_C15_C0_4, plus two sysregs at
+# S3_4_C15_C1_{0,1}). Cortex-A53 (ARMv8.0) has none of these; any MRS/MSR to
+# them traps as UNDEF and halts the kernel at the very first access.
+#
+# v3 NOPs the 14 offending instructions. The subsequent `msr sctlr_el1, x0`
+# at 0xFFFFFFF007DFC3B8 remains: the SCTLR_EL1 PAC-enable bits (EnIA/EnIB/
+# EnDA/EnDB) are RES0 on an A53, so writing them is ignored, not trapped.
+#
+# Scope: ONLY the reset vector. The 331k PAC-flavored instructions scattered
+# across the rest of the kernelcache (pacia/braa/retaa/…) are the subject of
+# v4 (bulk strip via tools/watchos/port/kernel_patch.py). The 82 Apple IMPDEF
+# sysregs scattered across the runtime are handled by the sn0w EL2 shim on
+# device, not by a static patch.
+#
+# Target kernelcache: Watch7,11 / watchOS 27.0.1 (24R365). All 14 sites
+# verified 2026-10-27 against the clean kernelcache (bytes match the expected
+# MSR/MRS encodings exactly).
+
+name: opw2-v3-pac-key-and-impdef-sysregs-reset-vector-nop
+depends: [opw2-v1-tcr-4k-granule, opw2-v2-pagetable-constants-4k]
+notes: |
+  Replaces 10 PAC key MSRs + 3 Apple IMPDEF MSRs + 1 Apple IMPDEF MRS with
+  NOP (0xd503201f) in the reset vector. After v3 the reset vector should
+  no longer trap on A53-missing features; the next trap will be the first
+  pacia/braa/retaa executed somewhere in __TEXT (handled by v4).
+
+va_base: 0xFFFFFFF007004000
+file_text_off: 0x0
+
+patches:
+  # -- PAC key register loads (ARMv8.3 Pointer Authentication) --
+  - name: nop_msr_apibkeylo_el1
+    va:   0xFFFFFFF007DFC338
+    orig: "40 21 18 d5"   # msr apibkeylo_el1, x0
+    new:  "1f 20 03 d5"   # nop
+  - name: nop_msr_apibkeyhi_el1
+    va:   0xFFFFFFF007DFC340
+    orig: "60 21 18 d5"   # msr apibkeyhi_el1, x0
+    new:  "1f 20 03 d5"
+  - name: nop_msr_apdbkeylo_el1
+    va:   0xFFFFFFF007DFC348
+    orig: "40 22 18 d5"   # msr apdbkeylo_el1, x0
+    new:  "1f 20 03 d5"
+  - name: nop_msr_apdbkeyhi_el1
+    va:   0xFFFFFFF007DFC350
+    orig: "60 22 18 d5"   # msr apdbkeyhi_el1, x0
+    new:  "1f 20 03 d5"
+  - name: nop_msr_apiakeylo_el1
+    va:   0xFFFFFFF007DFC368
+    orig: "00 21 18 d5"   # msr apiakeylo_el1, x0
+    new:  "1f 20 03 d5"
+  - name: nop_msr_apiakeyhi_el1
+    va:   0xFFFFFFF007DFC370
+    orig: "20 21 18 d5"   # msr apiakeyhi_el1, x0
+    new:  "1f 20 03 d5"
+  - name: nop_msr_apdakeylo_el1
+    va:   0xFFFFFFF007DFC378
+    orig: "00 22 18 d5"   # msr apdakeylo_el1, x0
+    new:  "1f 20 03 d5"
+  - name: nop_msr_apdakeyhi_el1
+    va:   0xFFFFFFF007DFC380
+    orig: "20 22 18 d5"   # msr apdakeyhi_el1, x0
+    new:  "1f 20 03 d5"
+  - name: nop_msr_apgakeylo_el1
+    va:   0xFFFFFFF007DFC388
+    orig: "00 23 18 d5"   # msr apgakeylo_el1, x0
+    new:  "1f 20 03 d5"
+  - name: nop_msr_apgakeyhi_el1
+    va:   0xFFFFFFF007DFC390
+    orig: "20 23 18 d5"   # msr apgakeyhi_el1, x0
+    new:  "1f 20 03 d5"
+
+  # -- Apple IMPDEF APCTL (S3_4_C15_C0_4) polling + enable block --
+  # The reset vector busy-waits on APCTL bit 1 ("ready"), then sets bits 0 and 2
+  # ("enable PAC"). On A53 there is no APCTL, so if we only NOP the mrs/msr the
+  # cbz loops forever on x1=0. Patch the whole 6-instruction block.
+  - name: nop_mrs_apctl
+    va:   0xFFFFFFF007DFC318
+    orig: "80 f0 3c d5"   # mrs x0, s3_4_c15_c0_4
+    new:  "1f 20 03 d5"
+  - name: nop_and_apctl_ready_mask
+    va:   0xFFFFFFF007DFC31C
+    orig: "01 00 7f 92"   # and x1, x0, #2
+    new:  "1f 20 03 d5"
+  - name: nop_cbz_apctl_poll
+    va:   0xFFFFFFF007DFC320
+    orig: "c1 ff ff b4"   # cbz x1, 0xFFFFFFF007DFC318 (retry if not ready)
+    new:  "1f 20 03 d5"
+  - name: nop_orr_apctl_set_bit0
+    va:   0xFFFFFFF007DFC324
+    orig: "00 00 40 b2"   # orr x0, x0, #1
+    new:  "1f 20 03 d5"
+  - name: nop_orr_apctl_set_bit2
+    va:   0xFFFFFFF007DFC328
+    orig: "00 00 7e b2"   # orr x0, x0, #4
+    new:  "1f 20 03 d5"
+  - name: nop_msr_apctl
+    va:   0xFFFFFFF007DFC32C
+    orig: "80 f0 1c d5"   # msr s3_4_c15_c0_4, x0
+    new:  "1f 20 03 d5"
+
+  # -- Apple IMPDEF S3_4_C15_C1_{0,1} --
+  - name: nop_msr_s3_4_c15_c1_0
+    va:   0xFFFFFFF007DFC358
+    orig: "00 f1 1c d5"   # msr s3_4_c15_c1_0, x0
+    new:  "1f 20 03 d5"
+  - name: nop_msr_s3_4_c15_c1_1
+    va:   0xFFFFFFF007DFC360
+    orig: "20 f1 1c d5"   # msr s3_4_c15_c1_1, x0
+    new:  "1f 20 03 d5"
+
+  # -- APRR_EL1 reads in exception vector preambles (VBAR+N) --
+  # The vector handlers at 0xDF5000-0xDF5700 read s3_4_c15_c2_1 (APRR_EL1, the
+  # permission-remap register) to compute per-page access rights before touching
+  # memory. On A53 the register doesn't exist and the MRS traps as UNDEF. All 4
+  # sites use the identical opcode (Rt=x0); NOP them so the handler proceeds
+  # with x0 holding whatever was in it (unused by the subsequent fault code).
+  - name: nop_mrs_aprr_el1_vec_dfc50f8
+    va:   0xFFFFFFF007DF50F8
+    orig: "20 f2 3c d5"
+    new:  "1f 20 03 d5"
+  - name: nop_mrs_aprr_el1_vec_df5174
+    va:   0xFFFFFFF007DF5174
+    orig: "20 f2 3c d5"
+    new:  "1f 20 03 d5"
+  - name: nop_mrs_aprr_el1_vec_df51f0
+    va:   0xFFFFFFF007DF51F0
+    orig: "20 f2 3c d5"
+    new:  "1f 20 03 d5"
+  - name: nop_mrs_aprr_el1_vec_df55b8
+    va:   0xFFFFFFF007DF55B8
+    orig: "20 f2 3c d5"
+    new:  "1f 20 03 d5"
