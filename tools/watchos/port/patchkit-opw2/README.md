@@ -28,8 +28,8 @@ in-kernelcache byte edits — not an EL2 shim — are:
 
 | gap | manifest | status |
 | --- | --- | --- |
-| TCR_EL1 TG0/TG1 = 16KB granule (A53 has no TGran16, ARMv8.2+) | **v1 TCR constant 16KB→4KB** | ✅ written |
-| Page-table bootstrap uses 16KB stride `0x4000` + 32MB L2 block `0x2000000` | **v2 stride+block constants** | 🔜 planned |
+| TCR_EL1 TG0/TG1 = 16KB granule (A53 has no TGran16, ARMv8.2+) | **v1 TCR constant 16KB→4KB** | ✅ verified in Unicorn |
+| Page-table bootstrap uses 16KB entries-per-table `0x800` + 32MB L2 block `0x2000000` | **v2 pagetable constants 16KB→4KB** | ✅ verified in Unicorn (PT entries drop from 8258 to 2114, exact 4× ratio) |
 | PAC MSRs (`apia/apib/apda/apdb/apga key lo/hi`) + Apple IMPDEF `APCTL` enables | **v3 PAC key MSR → nop** | 🔜 planned |
 | 331k PAC-flavored instructions (`pacia/braa/retaa/…`) across code segments | **v4 PAC bulk strip** (reuses `tools/watchos/port/kernel_patch.py`) | 🔜 planned |
 | 10k LSE atomics (`ldadd/stadd/cas…`) across code segments | **v5 LSE bulk strip to ldxr/stxr pairs** | 🔜 planned |
@@ -42,16 +42,22 @@ micro-hypervisor stage; that work is tracked separately.
 
 ## Status (2026-10-27)
 
-- **v1 TCR constant 16KB→4KB** — written and byte-verified against
-  `.scratchpad-local/session-previous/kernelcache_padded.macho` (SHA256 of
-  clean input `07f9d0e0b69c0a8d…`, patched output `86da6d082b67daa3…`,
-  exactly 2 byte diffs at file offsets `0x5aeba9` + `0x5aebab`).
-  Runtime verification (reaching `msr sctlr_el1` in Unicorn) is still open:
-  [`boot_harness.py`](../../emu/boot_harness.py) targets the watchOS 6.3.1
-  reset vector; porting its START/MMU_ON for watchOS 27 is the follow-up.
-- v2..v5 are design-complete (see table above) but not yet written. Each
-  needs its own manifest and own verification. Order matters: v2 before any
-  attempt to run the patched kernel through `pmap_bootstrap`.
+- **v1 TCR constant 16KB→4KB** — byte-verified, Unicorn-verified. Clean
+  input SHA256 `07f9d0e0b69c0a8d…`, v1-patched `86da6d082b67daa3…`
+  (2 byte diffs). Harness reaches MMU-enable with identical trace to the
+  clean baseline (25060 insns, 8258 PT entries). The watchOS 27 reset
+  vector addresses used by the harness (`START=0xfffffff007dfc06c`,
+  `MMU_ON=0xfffffff007dfc3b8`) match 6.3.1's exactly, so the existing
+  harness works unchanged.
+- **v2 pagetable constants 16KB→4KB** — byte-verified, Unicorn-verified.
+  7 MOVZ edits across the bootstrap. Composed with v1, SHA256
+  `a3e7742cf0a5c1ce…`. Harness still reaches MMU-enable, now with
+  6628 insns and 2114 PT entries — the ~4× drop that matches the
+  2048→512 entries-per-table change exactly.
+- v3..v5 are design-complete (see table above) but not yet written. Each
+  needs its own manifest and own verification. Order matters: v3 (PAC key
+  MSRs in the reset vector) before v4 (PAC bulk strip across all code
+  segments) so a device-side run doesn't trap on the key setup first.
 
 ## Usage
 

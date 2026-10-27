@@ -1,0 +1,68 @@
+# patchkit-opw2 manifest v2 — pagetable bootstrap constants 16KB → 4KB granule
+#
+# Depends on: v1 (TCR_EL1 constant 4KB granule).
+#
+# The kernel's reset vector (0xFFFFFFF007DFC06C .. 0xFFFFFFF007DFC3B8) builds
+# its own translation tables at `topOfKernelData` in-line, with constants baked
+# into the code. v1 flipped TCR_EL1 to say "4KB granule", but the bootstrap
+# still writes 2048 (0x800) entries per table and uses 32MB (0x2000000) L2
+# block descriptors — the 16KB-granule layout. On MMU-enable the kernel would
+# fault immediately: TCR says 4KB (3-level, 512 entries/table, 2MB blocks),
+# tables in memory are 16KB-granule (3-level, 2048 entries/table, 32MB blocks).
+#
+# v2 switches the bootstrap to 4KB-granule layout:
+#   entries/table  0x800 (2048) -> 0x200 (512)              # 5 sites
+#   L2 block size  0x2000000 (32MB) -> 0x200000 (2MB)       # 2 sites
+#
+# Table STRIDE is not an explicit constant in the bootstrap; it is `entries * 8`
+# (bytes per entry), so it follows automatically (0x200 * 8 = 0x1000 = 4KB).
+# TTBR0/TTBR1 point to the first page; the next table is `+ 0x1000`, not
+# `+ 0x4000` — again driven by the entries/table constant.
+#
+# Target kernelcache: Watch7,11 / watchOS 27.0.1 (24R365).
+# All sites verified 2026-10-27 against
+# .scratchpad-local/session-previous/kernelcache_padded.macho (orig bytes match
+# the expected MOVZ encodings).
+
+name: opw2-v2-pagetable-constants-4k
+depends: [opw2-v1-tcr-4k-granule]
+notes: |
+  Rewrites seven MOVZ immediates in the reset vector's pagetable bootstrap:
+  five mov Xn, #0x800 -> #0x200 (table entry count), and two
+  mov x13, #0x2000000 -> #0x200000 (L2 block size).
+  Together with v1, the kernel's self-built tables are now consistent with
+  the 4KB granule TCR, so a MMU enable in a correct emulator would not
+  immediately fault on translation.
+
+va_base: 0xFFFFFFF007004000
+file_text_off: 0x0
+
+patches:
+  - name: pt_entries_per_table_at_dfc118
+    va:   0xFFFFFFF007DFC118
+    orig: "02 00 81 d2"       # movz x2,  #0x800
+    new:  "02 40 80 d2"       # movz x2,  #0x200
+  - name: pt_entries_per_table_at_dfc168
+    va:   0xFFFFFFF007DFC168
+    orig: "0a 00 81 d2"       # movz x10, #0x800
+    new:  "0a 40 80 d2"       # movz x10, #0x200
+  - name: pt_entries_per_table_at_dfc1e0
+    va:   0xFFFFFFF007DFC1E0
+    orig: "06 00 81 d2"       # movz x6,  #0x800
+    new:  "06 40 80 d2"       # movz x6,  #0x200
+  - name: pt_entries_per_table_at_dfc1f4
+    va:   0xFFFFFFF007DFC1F4
+    orig: "0a 00 81 d2"       # movz x10, #0x800
+    new:  "0a 40 80 d2"       # movz x10, #0x200
+  - name: pt_entries_per_table_at_dfc26c
+    va:   0xFFFFFFF007DFC26C
+    orig: "09 00 81 d2"       # movz x9,  #0x800
+    new:  "09 40 80 d2"       # movz x9,  #0x200
+  - name: l2_block_size_at_dfc1bc
+    va:   0xFFFFFFF007DFC1BC
+    orig: "0d 40 a0 d2"       # movz x13, #0x200, lsl #16  (= 0x2000000)
+    new:  "0d 04 a0 d2"       # movz x13, #0x020, lsl #16  (= 0x200000)
+  - name: l2_block_size_at_dfc248
+    va:   0xFFFFFFF007DFC248
+    orig: "0d 40 a0 d2"       # movz x13, #0x200, lsl #16
+    new:  "0d 04 a0 d2"       # movz x13, #0x020, lsl #16
