@@ -333,11 +333,28 @@ boot:
   kernel_physbase: '0x8000'
 cpu:
   clusters:
-  - compat: arm,armv8
+  - compat: arm,cortex-a53
     cores: 4
-  - compat: unknown
-    cores: 1
+    midr: '0x51af8014'
+  isa_features:
+    # Resolved 2026-10-27 via rooted Wear OS (adb shell su -c): MIDR 0x51af8014 =
+    # Qualcomm Kryo 2XX Silver, Cortex-A53-based, ARMv8.0-A. ARM datasheet is the
+    # authority — these fields match that ISA level. The kernel is built with
+    # CONFIG_ARM64_LSE_ATOMICS=y and CONFIG_ARM64_PTR_AUTH_KERNEL=y, but both use
+    # runtime detection with ldxr/stxr fallback and PAC NOP semantics, so the
+    # kernel boots on an A53 that lacks them.
+    tgran4: true
+    tgran16: false
+    tgran64: null
+    pauth: false
+    lse: false
+    pan: true
 memory:
+  # The DT /memory node ships with reg=<0 0 0 0>; iBoot patches it at runtime.
+  # Live /proc/iomem shows DRAM-backed IO at 0x00500000..0x60000000 and the
+  # kernel reports MemTotal≈1.86 GiB (/proc/meminfo). The actual DRAM base/size
+  # must come from a runtime probe or /sys/firmware/memreserve; not from the
+  # static DT, so these stay as placeholders until we add that extractor.
   dram_base: '0x0'
   dram_size: '0x0'
   reserved:

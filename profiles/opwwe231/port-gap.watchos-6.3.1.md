@@ -17,7 +17,7 @@ Profile partial: `False`
 
 - compare: `feature`
 - expected: `True`
-- actual: `None`
+- actual: `False`
 - remediation: **kernel-patch** → `tcr_el1`
   > Kernelcache programs TCR_EL1 = 0x000800226519a519 unconditionally (TG0/TG1 = 16KB). On a core without TGran16, rebuild the page-table bootstrap at 4KB granule — massive change, no small patch.
 
@@ -25,7 +25,7 @@ Profile partial: `False`
 
 - compare: `feature`
 - expected: `True`
-- actual: `None`
+- actual: `False`
 - remediation: **el2-trap-shim** → `sn0w-el2`
   > 331,911 PAC instructions in the kernelcache. On a non-PAC core, trap-emulate PAC MSRs (apia/apib/apda/apdb/apga key lo/hi) and strip pac*/aut*/braa*/retaa* via sn0w EL2 shim or static kernel patch.
 
@@ -33,7 +33,7 @@ Profile partial: `False`
 
 - compare: `feature`
 - expected: `True`
-- actual: `None`
+- actual: `False`
 - remediation: **el2-trap-shim** → `sn0w-el2`
   > 10,211 LSE atomic instructions in the kernelcache. On a non-LSE core, trap-emulate via EL2 or patch to ldxr/stxr pairs.
 

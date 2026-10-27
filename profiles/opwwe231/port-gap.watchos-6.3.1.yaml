@@ -13,7 +13,7 @@ items:
 - path: cpu.isa_features.tgran16
   compare: feature
   expected: true
-  actual: null
+  actual: false
   remediation:
     kind: kernel-patch
     target: tcr_el1
@@ -23,11 +23,10 @@ items:
 
       '
   verdict: BLOCKER
-  unknown: true
 - path: cpu.isa_features.pauth
   compare: feature
   expected: true
-  actual: null
+  actual: false
   remediation:
     kind: el2-trap-shim
     target: sn0w-el2
@@ -37,11 +36,10 @@ items:
 
       '
   verdict: SHIM
-  unknown: true
 - path: cpu.isa_features.lse
   compare: feature
   expected: true
-  actual: null
+  actual: false
   remediation:
     kind: el2-trap-shim
     target: sn0w-el2
@@ -50,7 +48,6 @@ items:
 
       '
   verdict: SHIM
-  unknown: true
 - path: memory.dram_base
   compare: equal
   expected: '0x800000000'
