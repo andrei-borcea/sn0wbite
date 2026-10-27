@@ -25,3 +25,11 @@ profiles/*/_payloads/
 tools/watchos/stage1-opw2/stage1.bin
 tools/watchos/stage1-opw2/stage1.elf
 tools/watchos/stage1-opw2/stage1-slot-b.img
+
+# boot-watchos payload build artifacts
+tools/opwwe231/boot-watchos-payload/boot-watchos
+tools/opwwe231/boot-watchos-payload/boot-watchos.stripped
+
+# sn0wmenu9 build artifacts (keep source only)
+tools/opwwe231/recovery-menu/src/sn0wmenu9
+tools/opwwe231/recovery-menu/src/sn0wmenu9.stripped
