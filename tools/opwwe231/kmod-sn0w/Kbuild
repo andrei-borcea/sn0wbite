@@ -5,4 +5,6 @@
 obj-m := sn0w_hello.o
 sn0w_hello-y := src/sn0w_hello.o
 
-ccflags-y += -Wall -Wextra -Wno-unused-parameter
+# Keep ccflags empty — the kernel supplies its own strict warning set and
+# -Wextra fires on known-tolerated sign-compare warnings inside kernel
+# headers (page-flags.h, mmzone.h). Add module-specific flags only.
