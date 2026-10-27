@@ -1,0 +1,62 @@
+# patchkit-opw2 manifest v1 — TCR_EL1 16KB → 4KB granule
+#
+# Target: watchOS 27.0.1 (24R365) kernelcache for Watch7,11 (n218bap, T8310 / S10 SiP),
+#         to be bootable on OPWWE231 (Qualcomm W5 Gen 1 / monaco), whose Kryo 2XX
+#         Silver cores are Cortex-A53-based (ARMv8.0-A) and DO NOT support the 16KB
+#         translation granule (TGran16 is ARMv8.2+). This is the first and smallest
+#         patch of the port chain; it changes a single 8-byte constant.
+#
+# Note: the exact same TCR constant 0x000800226519a519 lives at the same VA
+# 0xFFFFFFF0075B2BA8 across watchOS 6.3.1 (Watch5,4 reconstruction) and watchOS 27
+# (Watch7,11, verified 2026-10-27 by grepping kernelcache_padded.macho — 1 unique
+# occurrence). Apple keeps 16KB granule + 39-bit VA + 40-bit PA as the invariant.
+#
+# The kernel's reset vector (REA ev_e5cf5c62… / ev_d1fa7004…) loads this constant into
+# x1 and writes TCR_EL1 unconditionally. See docs/watchos/boot-chain-reconstruction.md
+# and the port-gap report at profiles/opwwe231/port-gap.watchos-6.3.1.yaml (BLOCKER
+# verdict on cpu.isa_features.tgran16).
+#
+# Bit layout of TCR_EL1 (ARMv8-A, lower 64 bits):
+#   T0SZ (0-5)   = 25   (39-bit VA, kept)
+#   IRGN0 (8-9)  = 10
+#   ORGN0 (10-11)= 10
+#   SH0 (12-13)  = 11
+#   TG0 (14-15)  = 10 (16KB)   -> 00 (4KB)       <-- this patch
+#   T1SZ (16-21) = 25   (kept)
+#   IRGN1 (24-25)= 10
+#   ORGN1 (26-27)= 10
+#   SH1 (28-29)  = 11
+#   TG1 (30-31)  = 01 (16KB)   -> 10 (4KB)       <-- this patch
+#   IPS (32-34)  = 010 (40-bit PA, kept)
+#   TBI0 (37)    = 1    (top-byte-ignored, kept — PAC relies on this)
+#   HD (40)      = 1    (kept)
+#
+# Scope of this patch: ONLY the TCR constant. The kernel's page-table bootstrap
+# still uses a 16KB stride (0x4000) and 32MB block size (0x2000000); the next
+# patch of the chain (v2) addresses those. Reaching `msr sctlr_el1` with the new
+# TCR is this manifest's success criterion, verified in Unicorn by boot_harness.py.
+#
+# va_base + file_text_off are PLACEHOLDERS. Resolve them from your specific
+# kernelcache with:
+#   python3 kc-segmap.py <kernelcache.macho>
+# and overwrite the two values below before running patchkit.py apply/verify.
+
+name: opw2-v1-tcr-4k-granule
+notes: |
+  Changes TCR_EL1 const 0x000800226519a519 -> 0x00080022a5192519 at VA 0xFFFFFFF0075B2BA8.
+  Enables 4KB granule for TTBR0/TTBR1; preserves 39-bit VA and 40-bit PA.
+  Precondition: run kc-segmap.py to populate the two offsets below.
+
+# resolved from kc-segmap.py against the Watch7,11 watchOS 27 kernelcache (Mach-O
+# kernelcache.release.watch7b, __TEXT vmaddr 0xfffffff007004000, fileoff 0x0).
+# If you target a different kernelcache, re-run kc-segmap.py --manifest ... --rewrite.
+va_base: 0xFFFFFFF007004000
+file_text_off: 0x0
+
+patches:
+  - name: tcr_el1_const_4k_granule
+    va:   0xFFFFFFF0075B2BA8
+    # 0x000800226519a519 as 8 LE bytes
+    orig: "19 a5 19 65 22 00 08 00"
+    # 0x00080022a5192519 as 8 LE bytes
+    new:  "19 25 19 a5 22 00 08 00"
