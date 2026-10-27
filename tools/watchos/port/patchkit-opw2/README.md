@@ -33,7 +33,7 @@ in-kernelcache byte edits — not an EL2 shim — are:
 | PAC MSRs (`apia/apib/apda/apdb/apga key lo/hi`) + Apple IMPDEF `APCTL`/`APRR_EL1` early-boot accesses | **v3 PAC key MSR + Apple IMPDEF reset-vector + APRR vector-handler → nop** | ✅ verified in Unicorn (22 insns NOPped, still reaches MMU-enable) |
 | 331k PAC-flavored instructions (`pacia/braa/retaa/…`) across code segments | **v4 PAC bulk strip** (reuses `tools/watchos/port/kernel_patch.py`) | 🔜 planned |
 | 55k PAC-flavored instructions (`pacia/braa/retaa/…`) across code segments | **v4 bulk PAC strip** (via `tools/watchos/port/kernel_patch.py`, metadata only in `manifest-v4.notes.yaml`) | ✅ verified in Unicorn (49 089 sites NOPped) |
-| 10k LSE atomics (`ldadd/stadd/cas…`) across code segments | **v5 LSE bulk strip to ldxr/stxr pairs** | 🔜 planned |
+| 10k LSE atomics (`ldadd/stadd/cas…`) across code segments | **v5 — EL2 trap-and-emulate** (lives in `tools/watchos/sn0w-el2-opw2/`, no static patch) | 🧪 scaffolded, impl pending |
 | 82 distinct Apple IMPDEF system registers | **(moved to EL2 shim, not a kernelcache patch)** | — |
 
 Everything in the "EL2 shim" row belongs to `tools/watchos/qemu/sn0w/` (the
@@ -72,7 +72,16 @@ micro-hypervisor stage; that work is tracked separately.
   Composed v1+v2+v3+v4 SHA256 `a6fc0b50a812d11e…`. Harness reaches
   MMU-enable; the harness's own secondary strip reports an additional
   6 191 PAC sites outside `CODE_SEGS` which are informational only.
-- v5 (LSE → ldxr/stxr) is the last host-side piece.
+- **v5 LSE → EL2 trap-and-emulate** — moved OFF the kernelcache
+  entirely. See [`manifest-v5.notes.yaml`](manifest-v5.notes.yaml) for
+  the rationale (LSE insns are 4 B, their ldxr/stxr equivalent is
+  12-16 B — no in-place rewrite is possible without relocating the
+  entire kernelcache). Implementation lives in
+  [`tools/watchos/sn0w-el2-opw2/`](../../sn0w-el2-opw2/), which also
+  handles the 72 Apple IMPDEF sysregs the same way. v5 "runs" at every
+  boot via the EL2 trap vector, not as a one-shot patch, so the host
+  verify path for it is a Unicorn/QEMU full-system test rather than
+  `patchkit verify`.
 
 ## Usage
 

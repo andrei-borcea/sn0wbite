@@ -1,0 +1,52 @@
+# patchkit-opw2 v5 — LSE atomics (metadata only, DELEGATED to EL2 shim)
+#
+# Unlike v1-v4, v5 performs NO static modification of the kernelcache. The LSE
+# atomic instructions (ldadd, ldclr, ldset, ldeor, stadd, stclr, stset, steor,
+# cas, casp, swp family) are ARMv8.1 additions that A53 cores do not implement;
+# every such instruction traps UNDEF at EL1. There are ~10 000 LSE sites across
+# __TEXT, __TEXT_EXEC and __PPL* in Watch7,11 watchOS 27.
+#
+# A static patch is NOT viable because one LSE instruction (4 bytes) has no
+# equivalent-size replacement — the canonical ldxr/stxr loop is 3-4 insns
+# (12-16 bytes). An in-place rewrite would require either:
+#   (a) relocating code (shifts call offsets, breaks PAC-signed pointers,
+#       breaks __cstring/__DATA relocations — infeasible on a Mach-O
+#       kernelcache we already handed off), or
+#   (b) a trampoline-table approach (~600 KB in free space, 10 k `bl
+#       trampoline` sites — doable but expensive to engineer and audit).
+#
+# Trade-off summary (see the chat decision 2026-10-27):
+#   EL2 trap-and-emulate     static patch via trampolines
+#   ─────────────────────    ────────────────────────────
+#   kernelcache byte-pure    kernelcache +600 KB + 10 k bl sites
+#   O(1) code                O(10 k) sites with address constraints
+#   ~1 µs/atomic (trap+rfe)  ~0.5 µs/atomic (bl+ret)
+#   same mechanism as the    separate mechanism from everything else
+#     82 Apple IMPDEF regs
+#     already in sn0w EL2
+#
+# For bring-up ("boot → logo → shell") the EL2 route wins decisively on
+# simplicity and bug-containability. We can re-visit a trampoline-table
+# optimization LATER if measured performance makes the device unusable.
+#
+# The LSE emulator will live in the sn0w EL2 shim at
+#   tools/watchos/sn0w-el2-opw2/
+# alongside the Apple IMPDEF sysreg traps that are already in
+#   tools/watchos/qemu/sn0w/sn0w_cpu.c
+# (the QEMU variant; the bare-metal EL2 code reuses the same decode tables).
+# This manifest exists only to pin v5 in the chain's ordering and to make the
+# dependency explicit — v5 "runs" at every boot, continuously, not as a one-
+# shot patch.
+
+name: opw2-v5-lse-atomics-el2-trap-emulate
+depends:
+  - opw2-v1-tcr-4k-granule
+  - opw2-v2-pagetable-constants-4k
+  - opw2-v3-pac-key-and-impdef-sysregs-reset-vector-nop
+  - opw2-v4-pac-bulk-strip
+transform: null                           # no static patch; see runtime below
+runtime: ../../sn0w-el2-opw2/             # EL2 trap handler, applied every boot
+sites_expected: ~10000                    # LSE atomic sites in __TEXT*/__PPL*
+va_base: 0xFFFFFFF007004000
+file_text_off: 0x0
+patches: []
