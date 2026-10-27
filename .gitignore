@@ -20,3 +20,8 @@ profiles/*/_payloads/
 # Local-only scratchpad: large binary firmware artefacts, build intermediates,
 # session dumps. Preserved for reproducibility but not committed (Apple IP + size).
 /.scratchpad-local/
+
+# stage1-opw2 build artifacts
+tools/watchos/stage1-opw2/stage1.bin
+tools/watchos/stage1-opw2/stage1.elf
+tools/watchos/stage1-opw2/stage1-slot-b.img
