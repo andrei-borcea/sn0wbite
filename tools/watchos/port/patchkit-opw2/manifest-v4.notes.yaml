@@ -1,0 +1,47 @@
+# patchkit-opw2 v4 — bulk PAC strip (metadata only, no inline patches)
+#
+# Unlike v1-v3 (surgical byte patches declared inline), v4 is a bulk pattern-
+# based rewrite covering every PAC-flavored instruction in __TEXT, __TEXT_EXEC,
+# __PPLTEXT, __PPLTRAMP and __KLD — about 55 280 sites in Watch7,11 watchOS 27.
+# Expressing 55 k entries inline would make the manifest unauditable, and
+# `patchkit.py`'s scanner language is scoped to one function range at a time
+# (see `function_va` + `function_size` in `tools/watchos/qemu-sptm/patchkit/
+# patchkit.py`), so segment-wide bulk is out of its scope.
+#
+# The transformation itself already lives in
+# `tools/watchos/port/kernel_patch.py` and has been validated by the Unicorn
+# harness runs for v1..v3 (which print `PAC instructions patched (NOP/strip):
+# 55280` at startup). v4 therefore has no `patches:` block in this manifest;
+# instead it is applied by `verify-boot.sh` as a separate step after the
+# patchkit chain finishes:
+#
+#   kernelcache
+#     -> patchkit apply manifest-v1.yaml -> kc.v1
+#     -> patchkit apply manifest-v2.yaml -> kc.v1v2
+#     -> patchkit apply manifest-v3.yaml -> kc.v1v2v3
+#     -> kernel_patch.py --apply kc.v1v2v3 kc.v1v2v3v4   # v4
+#     -> harness kc.v1v2v3v4
+#
+# Transformation rules (opcode families, identity semantics):
+#
+#   pacia/pacib/pacda/pacdb + z-forms, autia/.../xpaci/xpacd, pacga -> nop
+#   braa/brab/braaz/brabz                                            -> br  Xn
+#   blraa/blrab/blraaz/blrabz                                        -> blr Xn
+#   retaa/retab                                                      -> ret
+#   eretaa/eretab                                                    -> eret
+#
+# Each form has its own opcode mask with the register-select bits preserved
+# (equivalent to the scanner `KEEP(idx)` directive but applied in Python).
+#
+# Dependency ordering: v4 MUST come after v3 so the reset-vector PAC key MSRs
+# are already NOPped — v4 does not touch MSR/MRS of PAC keys, only the PAC
+# compute instructions themselves. The PAC key MSRs would still trap UNDEF
+# otherwise.
+
+name: opw2-v4-pac-bulk-strip
+depends: [opw2-v1-tcr-4k-granule, opw2-v2-pagetable-constants-4k, opw2-v3-pac-key-and-impdef-sysregs-reset-vector-nop]
+transform: ../kernel_patch.py          # applied via verify-boot.sh, not patchkit.py
+sites_expected: 55280                  # observed on Watch7,11 watchOS 27 kernelcache
+va_base: 0xFFFFFFF007004000
+file_text_off: 0x0
+patches: []                            # intentionally empty — see transform above

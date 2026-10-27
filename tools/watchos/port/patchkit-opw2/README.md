@@ -32,6 +32,7 @@ in-kernelcache byte edits — not an EL2 shim — are:
 | Page-table bootstrap uses 16KB entries-per-table `0x800` + 32MB L2 block `0x2000000` | **v2 pagetable constants 16KB→4KB** | ✅ verified in Unicorn (PT entries drop from 8258 to 2114, exact 4× ratio) |
 | PAC MSRs (`apia/apib/apda/apdb/apga key lo/hi`) + Apple IMPDEF `APCTL`/`APRR_EL1` early-boot accesses | **v3 PAC key MSR + Apple IMPDEF reset-vector + APRR vector-handler → nop** | ✅ verified in Unicorn (22 insns NOPped, still reaches MMU-enable) |
 | 331k PAC-flavored instructions (`pacia/braa/retaa/…`) across code segments | **v4 PAC bulk strip** (reuses `tools/watchos/port/kernel_patch.py`) | 🔜 planned |
+| 55k PAC-flavored instructions (`pacia/braa/retaa/…`) across code segments | **v4 bulk PAC strip** (via `tools/watchos/port/kernel_patch.py`, metadata only in `manifest-v4.notes.yaml`) | ✅ verified in Unicorn (49 089 sites NOPped) |
 | 10k LSE atomics (`ldadd/stadd/cas…`) across code segments | **v5 LSE bulk strip to ldxr/stxr pairs** | 🔜 planned |
 | 82 distinct Apple IMPDEF system registers | **(moved to EL2 shim, not a kernelcache patch)** | — |
 
@@ -63,9 +64,15 @@ micro-hypervisor stage; that work is tracked separately.
   still reports are a known op0 decode quirk in `boot_harness.py`'s
   `sr()` (displays `s5_*` instead of `s3_*`), not real instructions
   in __TEXT_EXEC.
-- v4..v5 still planned. v4 is the bulk PAC strip across all code
-  segments (reuses `tools/watchos/port/kernel_patch.py` which already
-  implements the 55 280-site rewrite); v5 is LSE → ldxr/stxr.
+- **v4 bulk PAC strip** — applied via
+  `tools/watchos/port/kernel_patch.py --apply` as a chain step (not a
+  patchkit manifest; see `manifest-v4.notes.yaml` for the rationale).
+  Rewrites 49 089 PAC-flavored instructions (`pacia`, `braa`, `retaa`,
+  etc.) across `__TEXT`/`__TEXT_EXEC`/`__PPLTEXT`/`__PPLTRAMP`/`__KLD`.
+  Composed v1+v2+v3+v4 SHA256 `a6fc0b50a812d11e…`. Harness reaches
+  MMU-enable; the harness's own secondary strip reports an additional
+  6 191 PAC sites outside `CODE_SEGS` which are informational only.
+- v5 (LSE → ldxr/stxr) is the last host-side piece.
 
 ## Usage
 
