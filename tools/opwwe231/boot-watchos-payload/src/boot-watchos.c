@@ -30,7 +30,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#define BUILD "v1"
+#define BUILD "v2"
 
 static void dump_file(const char *path, int max_lines) {
     int fd = open(path, O_RDONLY | O_CLOEXEC);
@@ -189,38 +189,79 @@ int main(int argc, char **argv) {
     printf("\n[iomem (if readable)]\n");
     dump_file_grep("/proc/iomem", "gic");
 
-    printf("\n[dmesg tail — last ~1 KB of kernel ring]\n");
-    int fd = open("/dev/kmsg", O_RDONLY | O_NONBLOCK | O_CLOEXEC);
-    if (fd < 0) {
+    printf("\n[kmsg — lines matching CPU/arm/feature/HWCAP]\n");
+    int kfd = open("/dev/kmsg", O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+    if (kfd < 0) {
         printf("  /dev/kmsg: errno=%d\n", errno);
     } else {
-        /* Seek to end-ish by reading a lot and discarding, then showing last N. */
-        char kbuf[16384];
-        ssize_t total = 0;
-        while (total < (ssize_t)sizeof kbuf) {
-            ssize_t r = read(fd, kbuf + total, sizeof kbuf - total);
-            if (r <= 0) break;
-            total += r;
-        }
-        close(fd);
-        if (total > 0) {
-            /* Grep lines containing ID_AA64, isar, mmfr, feature, pac, lse, atomics */
-            char *p = kbuf, *end = kbuf + total;
-            while (p < end) {
-                char *nl = memchr(p, '\n', end - p);
-                size_t len = nl ? (size_t)(nl - p) : (size_t)(end - p);
-                char line[512];
-                size_t clen = len < sizeof line - 1 ? len : sizeof line - 1;
-                memcpy(line, p, clen); line[clen] = 0;
-                if (strstr(line, "ID_AA64") || strstr(line, "isar") ||
-                    strstr(line, "mmfr") || strstr(line, "feature") ||
-                    strstr(line, "PAC") || strstr(line, "LSE") ||
-                    strstr(line, "atomics") || strstr(line, "detected")) {
-                    printf("  %s\n", line);
-                }
-                p = nl ? nl + 1 : end;
+        char line[2048];
+        ssize_t r;
+        int matched = 0, total = 0;
+        while ((r = read(kfd, line, sizeof line - 1)) > 0 && total < 2000) {
+            total++;
+            line[r] = 0;
+            if (strstr(line, "CPU") || strstr(line, " cpu") ||
+                strstr(line, "arm64") || strstr(line, "feature") ||
+                strstr(line, "HWCAP") || strstr(line, "MIDR") ||
+                strstr(line, "ID_AA64")) {
+                /* kmsg lines are "<pri>,seq,ts,flag;text\n" — print the text */
+                char *sc = strchr(line, ';');
+                if (sc) printf("  %s", sc + 1);
+                else printf("  %s", line);
+                matched++;
+                if (matched >= 40) break;
             }
         }
+        close(kfd);
+        printf("  (read %d records, matched %d)\n", total, matched);
+    }
+
+    printf("\n[/proc/device-tree alternative path]\n");
+    dt_prop("/proc/device-tree/compatible", 128);
+    dt_prop("/proc/device-tree/model", 128);
+    dt_prop("/proc/device-tree/chosen/bootargs", 1024);
+    dt_prop("/proc/device-tree/chosen/kaslr-seed", 32);
+
+    printf("\n[vendor_boot first 512 B — DT magic + bootimg hdr]\n");
+    int vb = open("/dev/block/by-name/vendor_boot", O_RDONLY | O_CLOEXEC);
+    if (vb < 0) {
+        printf("  vendor_boot: errno=%d\n", errno);
+    } else {
+        unsigned char buf[128];
+        ssize_t n = read(vb, buf, sizeof buf);
+        close(vb);
+        if (n > 0) {
+            printf("  first %zd bytes:", n);
+            for (int i = 0; i < n && i < 32; i++) printf(" %02x", buf[i]);
+            printf("\n");
+            if (n >= 8 && memcmp(buf, "VNDRBOOT", 8) == 0)
+                printf("  → VNDRBOOT magic confirmed\n");
+        }
+    }
+
+    printf("\n[misc partition scan — non-zero 32-byte windows]\n");
+    int mfd = open("/dev/block/by-name/misc", O_RDONLY | O_CLOEXEC);
+    if (mfd >= 0) {
+        const off_t probes[] = {0x0, 0x800, 0x8000, 0x9000, 0xA000, 0xB000, 0xC000, 0xD000, 0xE000, 0xF000, 0x10000, 0x20000};
+        for (size_t pi = 0; pi < sizeof(probes)/sizeof(probes[0]); pi++) {
+            unsigned char w[32];
+            if (lseek(mfd, probes[pi], SEEK_SET) == (off_t)-1) continue;
+            ssize_t n = read(mfd, w, sizeof w);
+            if (n <= 0) continue;
+            int nonzero = 0;
+            for (int i = 0; i < n; i++) if (w[i]) nonzero++;
+            if (nonzero) {
+                printf("  misc+0x%lx:", (long)probes[pi]);
+                for (int i = 0; i < 16 && i < n; i++) printf(" %02x", w[i]);
+                printf("  ");
+                for (int i = 0; i < 16 && i < n; i++)
+                    printf("%c", (w[i] >= 0x20 && w[i] < 0x7f) ? w[i] : '.');
+                printf("\n");
+            }
+        }
+        close(mfd);
+    } else {
+        printf("  misc open errno=%d\n", errno);
     }
 
     printf("\n[selinux enforce]\n");

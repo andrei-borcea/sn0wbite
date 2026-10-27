@@ -1,0 +1,69 @@
+# Build environment for the sn0w kernel module targeting the OPW2's running
+# Android Common Kernel 5.15 ("5.15.185-android14-11-maybe-dirty"). Runs in
+# Podman on an arm64 Mac — host matches target CPU, so the kernel build
+# cross-compiles to aarch64 natively without emulation.
+#
+# Usage:
+#   podman build -t sn0w-kbuild tools/opwwe231/kmod-sn0w/
+#   podman run --rm -it \
+#     -v $PWD/tools/opwwe231/kmod-sn0w:/sn0w \
+#     -v $PWD/.scratchpad-local/akm:/akm \
+#     sn0w-kbuild bash
+#
+# Inside the shell, `/akm` is a bind-mount for the (large) kernel source +
+# prebuilt Clang + build artefacts — kept outside the repo and the image so
+# we don't rebuild from scratch each iteration.
+
+FROM --platform=linux/arm64 ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=UTC
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      build-essential \
+      bc \
+      bison \
+      ca-certificates \
+      cpio \
+      curl \
+      file \
+      flex \
+      git \
+      gnupg \
+      kmod \
+      libelf-dev \
+      libncurses5-dev \
+      libssl-dev \
+      lz4 \
+      make \
+      openssl \
+      python3 \
+      python3-pip \
+      rsync \
+      tar \
+      unzip \
+      wget \
+      xz-utils \
+      zstd \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Google's `repo` tool (used by AOSP kernel manifest layout — optional, we
+# also support plain git clone of the common kernel).
+RUN curl -sSL https://storage.googleapis.com/git-repo-downloads/repo \
+      -o /usr/local/bin/repo \
+    && chmod +x /usr/local/bin/repo
+
+# Non-root user matching the typical UID of the host so bind-mounts are
+# writable without root. Override at build time with --build-arg UID=... if
+# yours differs.
+ARG UID=1000
+ARG GID=1000
+RUN groupadd -g ${GID} dev && \
+    useradd -u ${UID} -g ${GID} -m -s /bin/bash dev && \
+    echo 'dev ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
+
+USER dev
+WORKDIR /sn0w
+
+CMD ["/bin/bash"]

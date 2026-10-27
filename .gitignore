@@ -33,3 +33,16 @@ tools/opwwe231/boot-watchos-payload/boot-watchos.stripped
 # sn0wmenu9 build artifacts (keep source only)
 tools/opwwe231/recovery-menu/src/sn0wmenu9
 tools/opwwe231/recovery-menu/src/sn0wmenu9.stripped
+
+# kmod-sn0w build artifacts (output .ko etc.)
+tools/opwwe231/kmod-sn0w/sn0w_hello.ko
+tools/opwwe231/kmod-sn0w/*.o
+tools/opwwe231/kmod-sn0w/*.mod
+tools/opwwe231/kmod-sn0w/*.mod.c
+tools/opwwe231/kmod-sn0w/*.cmd
+tools/opwwe231/kmod-sn0w/.*.cmd
+tools/opwwe231/kmod-sn0w/Module.symvers
+tools/opwwe231/kmod-sn0w/modules.order
+tools/opwwe231/kmod-sn0w/src/*.o
+tools/opwwe231/kmod-sn0w/src/.*.cmd
+tools/opwwe231/kmod-sn0w/build/
