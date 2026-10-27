@@ -1,0 +1,157 @@
+# sn0wbite device profile schema (JSON Schema draft-07, authored in YAML).
+# A profile describes a wearable's hardware/boot facts as derived from stock
+# backups. It is the ACTUAL side of the port-gap diff; the EXPECTED side is a
+# per-OS expectations file under ../expectations/.
+#
+# Normative notes:
+# - All physical addresses are hex strings ("0x...") to keep YAML diffs clean.
+# - `partial: true` MUST be set when any required partition is missing from the
+#   backup (e.g. super.img skipped). Downstream tools must treat missing fields
+#   as "unknown", not "absent".
+# - Each leaf fact SHOULD carry a `source_evidence` entry under the top-level
+#   `evidence` map, keyed by the dotted field path (e.g. "memory.dram_base").
+#   The evidence names the backup file and the extractor that produced it so a
+#   human can audit the chain.
+# - isa_features values are tri-state: true / false / null (unknown — e.g. a
+#   feature not observable from the given backup component).
+$schema: http://json-schema.org/draft-07/schema#
+$id: https://sn0wbite.dev/schema/device-profile/v1
+title: sn0wbite device profile
+type: object
+required: [schema_version, identity, partial]
+additionalProperties: false
+properties:
+  schema_version:
+    const: 1
+
+  partial:
+    type: boolean
+    description: True if any required partition was missing from the backup.
+
+  identity:
+    type: object
+    required: [device_id]
+    additionalProperties: false
+    properties:
+      device_id:        { type: string, description: "stable slug, e.g. opwwe231" }
+      vendor:           { type: string }
+      product_name:     { type: string }
+      soc:              { type: string, description: "e.g. qcom-w5-gen1 / monaco" }
+      backup_date:      { type: string, format: date }
+      backup_sha256:    { type: string, pattern: '^[0-9a-f]{64}$' }
+
+  cpu:
+    type: object
+    additionalProperties: false
+    properties:
+      clusters:
+        type: array
+        items:
+          type: object
+          required: [cores]
+          additionalProperties: false
+          properties:
+            compat:  { type: string, description: "DT compatible, e.g. arm,cortex-a53" }
+            cores:   { type: integer, minimum: 1 }
+            midr:    { type: string, pattern: '^0x[0-9a-fA-F]+$' }
+      isa_features:
+        type: object
+        description: >
+          Tri-state feature map. Keys use the ARM ID-register short names:
+          tgran16, tgran64, tgran4, pauth, lse, atomic, sha2, aes, etc.
+        additionalProperties:
+          oneOf:
+            - { type: boolean }
+            - { type: "null" }
+
+  memory:
+    type: object
+    additionalProperties: false
+    properties:
+      dram_base: { type: string, pattern: '^0x[0-9a-fA-F]+$' }
+      dram_size: { type: string, pattern: '^0x[0-9a-fA-F]+$' }
+      reserved:
+        type: array
+        items:
+          type: object
+          required: [name, base, size]
+          additionalProperties: false
+          properties:
+            name:  { type: string }
+            base:  { type: string, pattern: '^0x[0-9a-fA-F]+$' }
+            size:  { type: string, pattern: '^0x[0-9a-fA-F]+$' }
+            usage: { type: string, description: "e.g. ramoops, splash, pstore-console" }
+
+  boot:
+    type: object
+    additionalProperties: false
+    properties:
+      bootimg_header_version: { type: integer, minimum: 0, maximum: 4 }
+      page_size:              { type: integer }
+      kernel_physbase:        { type: string, pattern: '^0x[0-9a-fA-F]+$' }
+      kernel_cmdline:         { type: string }
+      kernel_size:            { type: integer }
+      ramdisk_size:           { type: integer }
+      dtb_size:               { type: integer }
+      avb_version:            { type: string, description: "e.g. avb2.0" }
+
+  console_uart:
+    type: object
+    additionalProperties: false
+    properties:
+      physaddr: { type: string, pattern: '^0x[0-9a-fA-F]+$' }
+      type:     { type: string, description: "e.g. msm-geni, dw_apb, 8250, snps-dw-apb-uart" }
+      baud:     { type: integer }
+      compat:   { type: string }
+
+  interrupt_controller:
+    type: object
+    additionalProperties: false
+    properties:
+      type:        { type: string, description: "e.g. gic-v3, gic-v2, aic" }
+      compat:      { type: string }
+      dist_base:   { type: string, pattern: '^0x[0-9a-fA-F]+$' }
+      redist_base: { type: string, pattern: '^0x[0-9a-fA-F]+$' }
+      base:        { type: string, pattern: '^0x[0-9a-fA-F]+$', description: "non-GIC single-base ICs (AIC, apple)" }
+
+  timers:
+    type: array
+    items:
+      type: object
+      required: [kind]
+      additionalProperties: false
+      properties:
+        kind:     { type: string, description: "arch (cntp/cntv/cntps), aic-timebase, qtimer, ..." }
+        physaddr: { type: string, pattern: '^0x[0-9a-fA-F]+$' }
+        irqs:     { type: array, items: { type: integer } }
+        freq_hz:  { type: integer }
+
+  partitions:
+    type: array
+    items:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name:    { type: string }
+        type:    { type: string, enum: [abootimg, raw, super, vbmeta, dtbo, modem, encrypted, unknown] }
+        size:    { type: integer }
+        sha256:  { type: string, pattern: '^[0-9a-f]{64}$' }
+        slot:    { type: string, enum: [a, b, none] }
+
+  evidence:
+    type: object
+    description: >
+      Map of dotted field paths (e.g. "memory.dram_base") to the source that
+      produced that fact. Multiple sources per field are allowed; later entries
+      represent later composer passes and may override earlier ones.
+    additionalProperties:
+      type: array
+      items:
+        type: object
+        required: [extractor, source]
+        additionalProperties: false
+        properties:
+          extractor: { type: string, description: "e.g. extractors.bootimg" }
+          source:    { type: string, description: "backup file, relative path" }
+          note:      { type: string }

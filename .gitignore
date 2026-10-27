@@ -9,6 +9,14 @@
 __pycache__/
 *.pyc
 
+# Local virtual environment for the tools that need PyYAML (patchkit, mapping).
+# Bootstrap with: python3 -m venv .venv && .venv/bin/pip install pyyaml
+/.venv/
+
+# Splayed boot/vendor_boot payloads produced by the mapping composer. Derived
+# from `backups/` (gitignored), regeneratable via `tools/mapping/profile.py`.
+profiles/*/_payloads/
+
 # Local-only scratchpad: large binary firmware artefacts, build intermediates,
 # session dumps. Preserved for reproducibility but not committed (Apple IP + size).
 /.scratchpad-local/

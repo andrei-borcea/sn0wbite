@@ -1,0 +1,178 @@
+# sn0wbite port expectations — watchOS 6.3.1 (17U224) on Watch5,4 (T8006 / S5).
+#
+# This is the EXPECTED side of the port-gap diff. Each rule compares a path in
+# a device profile against a required value; the differ emits a `MATCH`,
+# `SHIM`, or `BLOCKER` verdict with the attached remediation hint.
+#
+# Compare operators:
+#   equal     — profile value must be exactly `value`
+#   present   — the field must exist (non-null)
+#   feature   — profile `cpu.isa_features.<key>` must be true (BLOCKER otherwise)
+#                shim  — SHIM instead of BLOCKER when absent
+#   note      — informational only; always MATCH, carries a remediation note
+#
+# Facts here come from:
+#   docs/watchos/boot-chain-reconstruction.md         (entry contract, TCR, PAC)
+#   docs/watchos/platform-device-map.md               (device bases)
+#   research/opwwe231/2026-10-24-watchos-boot/        (PAC + register census)
+#   tools/watchos/bootargs/boot_args.h                (boot_args layout)
+schema_version: 1
+expectations_id: watchos-6.3.1-watch5
+target_os: watchOS 6.3.1 (17U224)
+target_device: Watch5,4 (n146bap)
+target_soc: Apple T8006 (S5)
+
+rules:
+  # --- CPU / ISA ----------------------------------------------------------
+  - path: cpu.isa_features.tgran16
+    compare: feature
+    value: true
+    verdict_on_absent: BLOCKER
+    remediation:
+      kind: kernel-patch
+      target: tcr_el1
+      note: >
+        Kernelcache programs TCR_EL1 = 0x000800226519a519 unconditionally
+        (TG0/TG1 = 16KB). On a core without TGran16, rebuild the page-table
+        bootstrap at 4KB granule — massive change, no small patch.
+
+  - path: cpu.isa_features.pauth
+    compare: feature
+    value: true
+    verdict_on_absent: SHIM
+    remediation:
+      kind: el2-trap-shim
+      target: sn0w-el2
+      note: >
+        331,911 PAC instructions in the kernelcache. On a non-PAC core,
+        trap-emulate PAC MSRs (apia/apib/apda/apdb/apga key lo/hi) and strip
+        pac*/aut*/braa*/retaa* via sn0w EL2 shim or static kernel patch.
+
+  - path: cpu.isa_features.lse
+    compare: feature
+    value: true
+    verdict_on_absent: SHIM
+    remediation:
+      kind: el2-trap-shim
+      target: sn0w-el2
+      note: >
+        10,211 LSE atomic instructions in the kernelcache. On a non-LSE core,
+        trap-emulate via EL2 or patch to ldxr/stxr pairs.
+
+  # --- Memory / boot_args ------------------------------------------------
+  - path: memory.dram_base
+    compare: equal
+    value: "0x800000000"
+    verdict_on_mismatch: SHIM
+    remediation:
+      kind: boot_args
+      note: >
+        Apple reference uses DRAM base 0x800000000; the OPW2 (Qualcomm W5)
+        maps DRAM at 0x80000000 or 0x40000000 (confirm from device profile).
+        Loader must synthesize boot_args.physBase matching whatever DRAM the
+        kernelcache will be relocated to; the Apple-vs-W5 base need not
+        agree.
+
+  - path: boot.kernel_physbase
+    compare: present
+    verdict_on_absent: SHIM
+    remediation:
+      kind: boot_args
+      note: >
+        The watchOS loader must set boot_args.physBase to the physical load
+        address of the kernelcache. tools/watchos/bootargs/mk_bootargs.c is
+        the host-side builder; the on-device loader uses the same struct
+        layout (boot_args.h, 2d8 bytes).
+
+  # --- Interrupt controller ----------------------------------------------
+  - path: interrupt_controller.type
+    compare: equal
+    value: aic
+    verdict_on_mismatch: SHIM
+    remediation:
+      kind: platform-model
+      target: aic-shim
+      note: >
+        The watchOS kernelcache expects an Apple AIC at the DT-declared base
+        (0x2d180000 on T8006). On a GIC-v3 host we must either (a) emulate
+        AIC in sn0w EL2 by trap-ing its MMIO window, or (b) rebuild the
+        kernel's AppleInterruptController kext against GIC — not viable
+        without SDK. Option (a) is the sn0w path.
+
+  - path: interrupt_controller.base
+    compare: present
+    verdict_on_absent: SHIM
+    remediation:
+      kind: platform-model
+      note: >
+        Even if the host IC is GIC, sn0w EL2 maps a shadow MMIO window to
+        the Apple AIC base (0x2d180000) and emulates reg access there.
+
+  # --- Console UART ------------------------------------------------------
+  - path: console_uart.physaddr
+    compare: present
+    verdict_on_absent: SHIM
+    remediation:
+      kind: platform-model
+      note: >
+        Apple watchOS expects a Samsung-style UART at uart0 base 0x2e500000.
+        The host provides a Qualcomm GENI/MSM UART at a different base;
+        either sn0w EL2 traps the Apple window and forwards to the native
+        UART, or the kernelcache patch retargets early-UART physaddr.
+
+  # --- Platform devices (sanity map; actual shim lives in sn0w EL2) ------
+  - path: _apple_platform.aic_base
+    compare: note
+    value: "0x2d180000"
+    note: "AIC MMIO base, size 0x8000."
+  - path: _apple_platform.aic_timebase
+    compare: note
+    value: "0x2d188000"
+    note: "aic-timebase, size 0x1000."
+  - path: _apple_platform.pmgr_base
+    compare: note
+    value: "0x2d000000"
+    note: "PMGR base, size 0x180000."
+  - path: _apple_platform.uart0_base
+    compare: note
+    value: "0x2e500000"
+    note: "uart0 (uart-1,samsung), IRQ 0x106."
+  - path: _apple_platform.disp0_base
+    compare: note
+    value: "0x18000000"
+    note: "display pipeline, size 0x2f0000."
+  - path: _apple_platform.coprocessors
+    compare: note
+    value: [sep, ans, aop, rtp, smc, sio]
+    note: >
+      7 ASC coprocessors (per DT): SEP 0x42400000, ANS 0x77400000,
+      AOP 0x4c400000, RTP 0x4cc00000, SMC 0x3e400000, SIO 0x2f400000.
+      Early boot: stub all 7 as unresponsive mailboxes; ANS modeled
+      enough to serve rootfs is the launchd gate.
+
+  # --- Required Apple IMPDEF system registers ----------------------------
+  - path: _apple_sysregs.required_count
+    compare: note
+    value: 82
+    note: >
+      82 distinct Apple IMPDEF system registers (S3_*_C15_*). Full census
+      in research/opwwe231/2026-10-24-watchos-boot/pac-and-register-census.txt.
+      RAZ/WI covers most config writes; APRR_EL0/EL1 need genuine R/W
+      backing (write-then-read-back semantics). Mirror of the sn0w layer in
+      tools/watchos/qemu/sn0w/.
+
+  # --- Kernel entry contract ---------------------------------------------
+  - path: _apple_entry.tcr_el1
+    compare: note
+    value: "0x000800226519a519"
+    note: >
+      TG0=TG1=16KB granule, T0SZ=T1SZ=25 (39-bit VA), IPS=2 (40-bit PA).
+      Loaded unconditionally — no 4KB path in start.
+  - path: _apple_entry.x0
+    compare: note
+    value: boot_args_phys
+    note: "x0 holds a physical pointer to a boot_args struct (see boot_args.h)."
+  - path: _apple_entry.el
+    compare: note
+    value: EL1
+    note: "Entry is EL1, MMU off, caches off, DAIF.daifset=0xf."
